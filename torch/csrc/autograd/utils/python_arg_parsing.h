@@ -39,4 +39,37 @@ inline std::tuple<c10::optional<at::Device>, c10::optional<at::ScalarType>, bool
     );
   }
 }
+
+inline std::tuple<c10::optional<at::Device>, c10::optional<at::ScalarType>, bool, bool, c10::optional<at::MemoryFormat>, bool>
+parse_FN_to_conversion(PyObject *args, PyObject *kwargs, bool allow_copy) {
+  static PythonArgParser parser({
+    "FN_to(Device device=None, ScalarType dtype=None, bool non_blocking=False, bool copy=False, *, MemoryFormat? memory_format=None, bool csr=False)",
+    "FN_to(ScalarType dtype, bool non_blocking=False, bool copy=False, *, MemoryFormat? memory_format=None, bool csr=False)",
+    "FN_to(Tensor tensor, bool non_blocking=False, bool copy=False, *, MemoryFormat? memory_format=None, bool csr=False)",
+  });
+  ParsedArgs<6> parsed_args;
+  auto r = parser.parse(args, kwargs, parsed_args);
+  if (r.idx == 0) {
+    if (!allow_copy && !r.isNone(3))
+      throw std::runtime_error(".to() does not accept copy argument");
+    return std::make_tuple(r.deviceOptional(0), r.scalartypeOptional(1), r.toBool(2), r.toBool(3), r.memoryformatOptional(4), r.toBool(5));
+  } else if (r.idx == 1) {
+    if (!allow_copy && !r.isNone(2))
+      throw std::runtime_error(".to() does not accept copy argument");
+    return std::make_tuple(c10::nullopt, r.scalartype(0), r.toBool(1), r.toBool(2), r.memoryformatOptional(3), r.toBool(4));
+  } else {
+    auto tensor = r.tensor(0);
+    if (!allow_copy && !r.isNone(2))
+      throw std::runtime_error(".to() does not accept copy argument");
+    return std::make_tuple(
+      tensor.device(),
+      tensor.scalar_type(),
+      r.toBool(1),
+      r.toBool(2),
+      r.memoryformatOptional(3),
+      r.toBool(4)
+    );
+  }
+}
+
 }}} // namespace torch::autograd::utils

@@ -227,6 +227,12 @@ static Tensor dispatch_copy_(Tensor & self, const Tensor & other, bool non_block
   return self.copy_(other, non_blocking);
 }
 
+static Tensor dispatch_FN_copy_(Tensor & self, const Tensor & other, bool non_blocking, bool csr) {
+  pybind11::gil_scoped_release no_gil;
+  OptionalDeviceGuard device_guard(device_of(self));
+  return self.FN_copy_(other, non_blocking, csr);
+}
+
  static PyObject * THPVariable_copy_(PyObject* self, PyObject* args, PyObject* kwargs)
 {
   HANDLE_TH_ERRORS
@@ -238,6 +244,20 @@ static Tensor dispatch_copy_(Tensor & self, const Tensor & other, bool non_block
   ParsedArgs<2> parsed_args;
   auto r = parser.parse(args, kwargs, parsed_args);
   return THPVariable_Wrap(dispatch_copy_(self_, r.tensor(0), r.toBool(1)));
+  END_HANDLE_TH_ERRORS
+}
+
+static PyObject * THPVariable_FN_copy_(PyObject* self, PyObject* args, PyObject* kwargs)
+{
+  HANDLE_TH_ERRORS
+  static PythonArgParser parser({
+    "FN_copy_(Tensor other, bool non_blocking=False, bool csr=False)",
+    "FN_copy_(Tensor other, bool async=False, bool csr=False)|deprecated"
+  });
+  auto& self_ = reinterpret_cast<THPVariable*>(self)->cdata;
+  ParsedArgs<3> parsed_args;
+  auto r = parser.parse(args, kwargs, parsed_args);
+  return THPVariable_Wrap(dispatch_FN_copy_(self_, r.tensor(0), r.toBool(1), r.toBool(2)));
   END_HANDLE_TH_ERRORS
 }
 
@@ -355,6 +375,31 @@ static Tensor dispatch_to(const Tensor & self, Device device, ScalarType dtype, 
   pybind11::gil_scoped_release no_gil;
   // TODO: Make this call the TensorOptions version, maybe?
   return self.to(device, dtype, non_blocking, copy, optional_memory_format);
+}
+
+static Tensor dispatch_FN_to(const Tensor & self, Device device, bool non_blocking, bool copy, c10::optional<c10::MemoryFormat> optional_memory_format, bool csr) {
+  pybind11::gil_scoped_release no_gil;
+  // NOTE: this is where we record aten::to in the graph during tracing. However, the behavior of aten::to
+  // is different with respect to TensorOptions fields that are not present: aten::to inherits fields that
+  // are missing from the self argument while the tracer assumes that they should be populated with the
+  // default values (eg. float for scalar type). By explicitly copying over the tensor options here we fully
+  // specify all tensor options and thus record the proper trace
+  return self.FN_to(self.options().device(device), non_blocking, copy, optional_memory_format, csr);
+}
+
+static Tensor dispatch_FN_to(const Tensor & self, bool non_blocking, bool copy, c10::optional<c10::MemoryFormat> optional_memory_format, bool csr) {
+  AutoNoGIL no_gil;
+  return self.FN_to(self.options(), non_blocking, copy, optional_memory_format, csr);
+}
+
+static Tensor dispatch_FN_to(const Tensor & self, ScalarType dtype, bool non_blocking, bool copy, c10::optional<c10::MemoryFormat> optional_memory_format, bool csr) {
+  pybind11::gil_scoped_release no_gil;
+  return self.FN_to(dtype, non_blocking, copy, optional_memory_format, csr);
+}
+
+static Tensor dispatch_FN_to(const Tensor & self, Device device, ScalarType dtype, bool non_blocking, bool copy, c10::optional<c10::MemoryFormat> optional_memory_format, bool csr) {
+  pybind11::gil_scoped_release no_gil;
+  return self.FN_to(device, dtype, non_blocking, copy, optional_memory_format, csr);
 }
 
 static PyObject * THPVariable_cpu(PyObject* self, PyObject* args, PyObject* kwargs)
@@ -757,6 +802,36 @@ static PyObject * THPVariable_to(PyObject* self, PyObject* args, PyObject* kwarg
   END_HANDLE_TH_ERRORS
 }
 
+static PyObject * THPVariable_FN_to(PyObject* self, PyObject* args, PyObject* kwargs)
+{
+  HANDLE_TH_ERRORS
+  auto parsed = parse_FN_to_conversion(args, kwargs, /*allow_copy*/ true);
+  auto& device = std::get<0>(parsed);
+  auto& scalarType = std::get<1>(parsed);
+  auto non_blocking = std::get<2>(parsed);
+  auto copy = std::get<3>(parsed);
+  auto opt_memory_format = std::get<4>(parsed);
+  auto csr = std::get<5>(parsed);
+  auto& self_ = reinterpret_cast<THPVariable*>(self)->cdata;
+  if (device && device->is_cuda()) {
+    torch::utils::cuda_lazy_init();
+  }
+  if (!device && !scalarType && !copy && !opt_memory_format.has_value()) {
+    Py_INCREF(self);
+    return self;
+  } else if (!device && !scalarType) {
+    return THPVariable_Wrap(dispatch_FN_to(self_, non_blocking, copy, opt_memory_format, csr));
+  } else if (!device) {
+    return THPVariable_Wrap(dispatch_FN_to(self_, *scalarType, non_blocking, copy, opt_memory_format, csr));
+  } else if (!scalarType) {
+    return THPVariable_Wrap(dispatch_FN_to(self_, *device, non_blocking, copy, opt_memory_format, csr));
+  } else {
+    return THPVariable_Wrap(dispatch_FN_to(self_, *device, *scalarType, non_blocking, copy, opt_memory_format, csr));
+  }
+  Py_RETURN_NONE;
+  END_HANDLE_TH_ERRORS
+}
+
 // implemented on the python object b/c arbitrarily nested list not declarable in native_functions.yaml
 // See: ATen/native/README.md for more context
 static PyObject * THPVariable_tolist(PyObject* self, PyObject* args)
@@ -871,6 +946,7 @@ PyMethodDef variable_methods[] = {
   {"char", (PyCFunction)(void(*)(void))THPVariable_char, METH_VARARGS | METH_KEYWORDS, NULL},
   {"contiguous", (PyCFunction)(void(*)(void))THPVariable_contiguous, METH_VARARGS | METH_KEYWORDS, NULL},
   {"copy_", (PyCFunction)(void(*)(void))THPVariable_copy_, METH_VARARGS | METH_KEYWORDS, NULL},
+  {"FN_copy_", (PyCFunction)(void(*)(void))THPVariable_FN_copy_, METH_VARARGS | METH_KEYWORDS, NULL},
   {"cpu", (PyCFunction)(void(*)(void))THPVariable_cpu, METH_VARARGS | METH_KEYWORDS, NULL},
   {"cuda", (PyCFunction)(void(*)(void))THPVariable_cuda, METH_VARARGS | METH_KEYWORDS, NULL},
   {"data_ptr", (PyCFunction)THPVariable_data_ptr, METH_NOARGS, NULL},
@@ -905,6 +981,7 @@ PyMethodDef variable_methods[] = {
   {"storage_type", (PyCFunction)THPVariable_storage_type, METH_NOARGS, NULL},
   {"stride", (PyCFunction)(void(*)(void))THPVariable_stride, METH_VARARGS | METH_KEYWORDS, NULL},
   {"to", (PyCFunction)(void(*)(void))THPVariable_to, METH_VARARGS | METH_KEYWORDS, NULL},
+  {"FN_to", (PyCFunction)(void(*)(void))THPVariable_FN_to, METH_VARARGS | METH_KEYWORDS, NULL},
   {"tolist", (PyCFunction)THPVariable_tolist, METH_NOARGS, NULL},
   {"type", (PyCFunction)(void(*)(void))THPVariable_type, METH_VARARGS | METH_KEYWORDS, NULL},
   ${py_method_defs}

@@ -64,8 +64,8 @@ SKIP_PYTHON_BINDINGS = [
     'full(_out)?',
     '_cholesky.*', '_triangular_solve.*', '_qr.*', '_symeig.*', '_svd.*',
     'slice', 'randint(_out)?',
-    'item', '_local_scalar_dense', 'to',
-    'copy_sparse_to_sparse_', 'copy_',
+    'item', '_local_scalar_dense', 'to', 'FN_to',
+    'copy_sparse_to_sparse_', 'copy_', 'FN_copy_',
     'numpy_T',  # this needs to be an attribute in Python, not a function
     'nonzero(_(out|numpy))?',
     'set_quantizer_',  # return types not supported yet

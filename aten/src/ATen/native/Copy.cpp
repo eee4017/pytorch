@@ -153,6 +153,75 @@ static Tensor & copy_impl(Tensor & self, const Tensor & src, bool non_blocking) 
   return self;
 }
 
+static Tensor & FN_copy_impl(Tensor & self, const Tensor & src, bool non_blocking, bool csr) {
+  // TODO: this should be handled during dispatch, but that's missing...
+  TORCH_CHECK(self.defined(), "self is undefined");
+  TORCH_CHECK(src.defined(), "src is undefined");
+
+  if (self.is_sparse() && src.is_sparse()) {
+    return at::copy_sparse_to_sparse_(self, src, non_blocking);
+  } else if (self.is_sparse() || src.is_sparse()) {
+    AT_ERROR("copy_() between dense and sparse Tensors is not implemented! Found self type = ",
+             self.toString(), " and src type = ", src.toString());
+  }
+
+  if (self.is_same(src)) {
+    return self;
+  }
+
+  // Re-dispatch copies when src device not implemented here (e.g. XLA).
+  // This includes: cpu_tensor.copy_(xla_tensor) which
+  // calls xla_tensor._copy_from(cpu_tensor)
+  if (!is_supported_device(src.device())) {
+    TORCH_INTERNAL_ASSERT(is_supported_device(self.device()));
+    at::_copy_from(src, self, non_blocking);
+    return self;
+  }
+
+  if (self.is_quantized() && !src.is_quantized()) {
+    return quantized_copy_from_float_(self, src);
+  }
+
+  if (self.is_quantized() && src.is_quantized()) {
+    TORCH_CHECK(self.qscheme() == src.qscheme(),
+                "Quantized Copy only works with same qscheme");
+    TORCH_CHECK(self.scalar_type() == src.scalar_type());
+    self.set_quantizer_(src.quantizer());
+  }
+
+  if (!self.is_quantized() && src.is_quantized()) {
+    TORCH_CHECK(false, "Copying from quantized Tensor to non-quantized Tensor is not allowed, please use dequantize to get a float Tensor from a quantized Tensor");
+  }
+
+  self.unsafeGetIntrusivePtr()->tID = src.getIntrusivePtr()->tID;
+
+  auto iter = TensorIterator();
+  iter.set_check_mem_overlap(true);
+  iter.add_output(self);
+  iter.add_input(src);
+  iter.dont_resize_outputs();
+  iter.dont_compute_common_dtype();
+  iter.build();
+
+  if (iter.numel() == 0) {
+    return self;
+  }
+
+  DeviceType device_type = iter.device_type(0);
+  if (iter.device_type(1) == kCUDA) {
+    device_type = kCUDA;
+  }
+
+  // TODO: if we need to, we can also enable this path for quantized tensor
+  if (device_type == kCPU && copy_transpose_valid(self, src) && !self.is_quantized()) {
+    copy_same_type_transpose_(self, src);
+    return self;
+  }
+
+  FN_copy_stub(device_type, iter, non_blocking, self.unsafeGetIntrusivePtr()->tID, csr);
+  return self;
+}
+
 Tensor& copy_(Tensor& self, const Tensor& src, bool non_blocking) {
   auto maybe_outnames = namedinference::compute_broadcast_outnames(self, src);
   {
@@ -163,11 +232,22 @@ Tensor& copy_(Tensor& self, const Tensor& src, bool non_blocking) {
   return self;
 }
 
+Tensor& FN_copy_(Tensor& self, const Tensor& src, bool non_blocking, bool csr) {
+  auto maybe_outnames = namedinference::compute_broadcast_outnames(self, src);
+  {
+    NoNamesGuard guard;
+    FN_copy_impl(self, src, non_blocking, csr);
+  }
+  namedinference::propagate_names_if_nonempty(self, maybe_outnames);
+  return self;
+}
+
 static auto registry = torch::import()
   .def("aten::copy_(Tensor(a!) self, Tensor src, bool non_blocking=False) -> Tensor(a!)",
        CppFunction::makeUnboxedOnly(copy_));
 
 DEFINE_DISPATCH(copy_stub);
+DEFINE_DISPATCH(FN_copy_stub);
 
 } // namespace native
 } // namespace at

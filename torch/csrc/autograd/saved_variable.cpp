@@ -105,4 +105,22 @@ const char* ERR_BACKWARD_TWICE =
     "already been freed. Specify retain_graph=True when calling backward "
     "the first time.";
 
+void FN_Engine::offload(at::Tensor t, int curOid, SavedVariable *backfn_loc, bool is_output) {
+  auto tid =  t.unsafeGetIntrusivePtr()->tID;
+  *backfn_loc = SavedVariable(t, is_output);
+
+  return;
+}
+
+bool FN_Engine::prefetch(int oid) {
+  return true;
+}
+
+void FN_Engine::synchronize(int oid, bool is_output) {
+  return;
+}
+
+void FN_Engine::drop(int oid, SavedVariable *backfn_loc) {
+  return;
+}
 }} // namespace torch::autograd

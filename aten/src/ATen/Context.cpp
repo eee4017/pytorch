@@ -171,4 +171,25 @@ struct LegacyDeviceTypeInit : public LegacyDeviceTypeInitInterface {
 };
 REGISTER_LEGACY_TYPE_INIT(LegacyDeviceTypeInit);
 
+/////////////////////////////////////////////////////////////////////
+// Implemented for FlashNeuron by SNU-ARC Function/Data Structures //
+/////////////////////////////////////////////////////////////////////
+
+static int global_op_id = -1;
+
+static bool debug = false;
+static bool on_demand = false;
+
+static bool on_forward = true;
+
+int Context::FN_GlobalContext::getOid() { return global_op_id; }
+int Context::FN_GlobalContext::setOid() { return ++global_op_id; }
+void Context::FN_GlobalContext::resetOid() { global_op_id = -1; }
+
+bool Context::FN_GlobalContext::isForward() {return on_forward; }
+
+bool Context::FN_GlobalContext::isOnDemand() { return on_demand; }
+bool Context::FN_GlobalContext::isDebug() { return debug; }
+void Context::FN_GlobalContext::turnOnDebug() { debug = true; }
+
 } // namespace at

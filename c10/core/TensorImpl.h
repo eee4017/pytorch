@@ -1675,7 +1675,8 @@ protected:
   // The logic is that if Extend() or ReserveSpace() were ever called,
   // then subsequent Resize()s will not free up Storage.
   bool reserved_ = false;
-
+ public:
+  int tID = -1;
 };
 
 // Note [TensorImpl size constraints]

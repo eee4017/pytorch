@@ -814,6 +814,12 @@
   device_guard: False
   supports_named_tensor: True
 
+- func: FN_copy_(Tensor(a!) self, Tensor src, bool non_blocking=False, bool csr=False) -> Tensor(a!)
+  manual_kernel_registration: True
+  variants: method
+  device_guard: False
+  supports_named_tensor: True
+
 - func: _copy_from(Tensor self, Tensor dst, bool non_blocking=False) -> Tensor
   use_c10_dispatcher: full
   dispatch: {}
@@ -3763,6 +3769,25 @@
   supports_named_tensor: True
 
 - func: to.other(Tensor self, Tensor other, bool non_blocking=False, bool copy=False, MemoryFormat? memory_format=None) -> Tensor
+  variants: method
+  device_guard: False
+
+- func: FN_to.dtype_layout(Tensor self, *, ScalarType dtype, Layout layout, Device device, bool pin_memory=False, bool non_blocking=False, bool copy=False, MemoryFormat? memory_format=None, bool csr=False) -> Tensor
+  variants: method
+  device_guard: False
+  supports_named_tensor: True
+
+- func: FN_to.device(Tensor self, Device device, ScalarType dtype, bool non_blocking=False, bool copy=False, MemoryFormat? memory_format=None, bool csr=False) -> Tensor
+  variants: method
+  device_guard: False
+  supports_named_tensor: True
+
+- func: FN_to.dtype(Tensor self, ScalarType dtype, bool non_blocking=False, bool copy=False, MemoryFormat? memory_format=None, bool csr=False) -> Tensor
+  variants: method
+  device_guard: False
+  supports_named_tensor: True
+
+- func: FN_to.other(Tensor self, Tensor other, bool non_blocking=False, bool copy=False, MemoryFormat? memory_format=None, bool csr=False) -> Tensor
   variants: method
   device_guard: False
 

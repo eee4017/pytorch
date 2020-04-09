@@ -111,6 +111,19 @@ class CAFFE2_API Context {
   const std::vector<at::QEngine>& supportedQEngines() const;
   bool isXNNPACKAvailable() const;
 
+  struct FN_GlobalContext {
+    int getOid();
+    int setOid();
+    void resetOid();
+
+    bool isForward();
+
+    bool isOnDemand();
+    bool isDebug();
+    void turnOnDebug();
+  };
+  FN_GlobalContext FN_Global;
+
  private:
   void initCUDAIfNeeded(DeviceType p) {
     if (p == DeviceType::CUDA) {

@@ -391,6 +391,11 @@ struct TORCH_API Node : std::enable_shared_from_this<Node> {
   std::vector<std::unique_ptr<FunctionPreHook>> pre_hooks_;
   std::vector<std::unique_ptr<FunctionPostHook>> post_hooks_;
   at::SmallVector<InputMetadata, 2> input_metadata_;
+ private:
+  int oID = -1;
+ public:
+  void setOid(int oid) { this->oID = oid; }
+  int getOid() { return this->oID; }
 };
 
 /// See Node::is_traceable() for definition.

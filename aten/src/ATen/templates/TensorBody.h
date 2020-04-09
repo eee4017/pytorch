@@ -124,6 +124,9 @@ class CAFFE2_API Tensor {
   const c10::intrusive_ptr<TensorImpl, UndefinedTensorImpl>& getIntrusivePtr() const {
     return impl_;
   }
+  c10::intrusive_ptr<TensorImpl, UndefinedTensorImpl>& unsafeGetIntrusivePtr() {
+    return impl_;
+  }
 
   bool defined() const {
     return impl_;

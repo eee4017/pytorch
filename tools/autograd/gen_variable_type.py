@@ -215,6 +215,7 @@ if (compute_requires_grad( ${args_with_derivatives} )) {
 ASSIGN_GRAD_FN = CodeTemplate("""\
 grad_fn = std::shared_ptr<${op}>(new ${op}(${op_ctor}), deleteNode);
 grad_fn->set_next_edges(collect_next_edges( ${args_with_derivatives} ));
+grad_fn->setOid(at::globalContext().FN_Global.getOid());
 """)
 
 CALL_DEFAULT = CodeTemplate("""\
@@ -258,6 +259,7 @@ if (${cond}) {
 
 RECORD_FUNCTION = CodeTemplate("""\
 RECORD_FUNCTION("${name}", std::vector<c10::IValue>({${input_names}}), Node::peek_at_next_sequence_nr());
+at::globalContext().FN_Global.setOid();
 """)
 
 SELECT = CodeTemplate("""\
@@ -734,6 +736,8 @@ def emit_body(declaration):
         for arg in saved_variables:
             name = arg['name']
             expr = arg.get('expr', arg['name'])
+            guard = guard_for(arg)
+            offload_flag = False
             if arg['type'] == 'Tensor' or (is_output and arg['type'] == 'Scalar'):
                 name += '_'
                 var = arg['name']
@@ -745,15 +749,22 @@ def emit_body(declaration):
                     is_inplace_view = "{}.is_view()".format(var)
                     expr = 'SavedVariable({}, {}, {})'.format(var, str(is_output).lower(), is_inplace_view)
                 else:
-                    expr = 'SavedVariable({}, {})'.format(var, str(is_output).lower())
+                    if guard is None:
+                        offload_flag = True
+                        expr = 'FN_Engine::offload({}, at::globalContext().FN_Global.getOid(), &(grad_fn->{}), {})'.format(var, name, str(is_output).lower())
+                    else:
+                        expr = 'SavedVariable({}, {})'.format(var, str(is_output).lower())
             elif arg['type'] == 'TensorList':
                 name += '_'
                 expr = 'make_saved_variable_list({})'.format(arg['name'])
             elif arg['type'] == 'IntArrayRef':
                 expr = expr + ".vec()"
-            guard = guard_for(arg)
+
             if guard is None:
-                stmts.append('grad_fn->{} = {};'.format(name, expr))
+                if offload_flag:
+                    stmts.append('{};'.format(expr))
+                else:
+                    stmts.append('grad_fn->{} = {};'.format(name, expr))
             else:
                 stmts.append('if ({}) {{'.format(guard))
                 stmts.append('  grad_fn->{} = {};'.format(name, expr))
@@ -928,9 +939,9 @@ def emit_body(declaration):
             RECORD_FUNCTION.substitute(combined, input_names=input_names))
     if strategy != 'use_type':
         body.extend(unpack_args(env, declaration))
-    if requires_derivative:
-        body.extend(emit_check_inplace())
-        body.extend(setup_derivative(differentiable_inputs))
+#    if requires_derivative:
+#        body.extend(emit_check_inplace())
+#        body.extend(setup_derivative(differentiable_inputs))
     body.append(declare_returned_variables())
 
     pre_record_trace, post_record_trace = format_trace(declaration)
@@ -938,6 +949,9 @@ def emit_body(declaration):
     body.append(pre_record_trace)
     body.append(emit_call(env))
     if requires_derivative:
+        body.extend(emit_check_inplace())
+        body.extend(setup_derivative(differentiable_inputs))
+
         # set_flags has to appear after version_counter, because rebase_history
         # requires that the counter is incremented before it is called
         body.extend(emit_increment_version())

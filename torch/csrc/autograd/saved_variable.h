@@ -57,4 +57,17 @@ class TORCH_API SavedVariable {
   bool has_grad_fn_ = false;
   bool is_inplace_view_ = false;
 };
+
+using PFInfo = std::pair<SavedVariable*, int>; // Information required for prefetching in backward
+
+struct FN_Engine {
+ public:
+  static void offload(at::Tensor t, int curOid, SavedVariable *backfn_loc, bool is_output);
+  static bool prefetch(int oid);
+  static void synchronize(int oid, bool is_output);
+  static void drop(int oid, SavedVariable *backfn_loc);
+ private:
+  static void recordPFInfo(int oid, int tid, SavedVariable *backfn_loc);
+};
+
 }} // namespace torch::autograd
