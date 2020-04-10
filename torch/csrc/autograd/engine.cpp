@@ -770,6 +770,8 @@ auto Engine::execute(const edge_list& roots,
                      bool keep_graph,
                      bool create_graph,
                      const edge_list& outputs) -> variable_list {
+
+  std::cout << "========================== Forward end ==========================" << std::endl;
   // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
   validate_outputs(roots, const_cast<variable_list&>(inputs), [](const std::string& msg) {
     return msg;
@@ -926,6 +928,10 @@ std::shared_ptr<FutureVariableList> Engine::execute_with_graph_task(
       TORCH_INTERNAL_ASSERT(graph_task->future_result_->completed());
     }
   }
+
+  std::cout << "========================== Backward end ==========================" << std::endl;
+  FN_Engine::reset();
+
   // graph_task_exec_post_processing is done when the Future is marked as
   // completed in mark_graph_task_completed.
   return graph_task->future_result_;

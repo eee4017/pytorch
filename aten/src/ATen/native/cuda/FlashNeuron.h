@@ -14,7 +14,17 @@ class FN_manager {
    FN_manager();
    ~FN_manager();
 
+   int getOid();
+   void setOid();
+   void resetOid();
+
+   int getTid();
+   void setTid();
+   void resetTid();
+
+ private:
    int global_tID;
+   int global_oID;
 };
 
 extern FN_manager FN_mngt;

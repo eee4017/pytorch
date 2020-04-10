@@ -536,6 +536,10 @@ Tensor sum_to_size(const Tensor& self, IntArrayRef size) {
 Tensor as_strided_tensorimpl(const Tensor& self, IntArrayRef size, IntArrayRef stride, optional<int64_t> storage_offset_) {
   auto storage_offset = storage_offset_.value_or(self.storage_offset());
   auto result = detail::make_tensor<TensorImpl>(Storage(self.storage()), self.key_set());
+
+  std::cout << "as_strided_tensorimpl, tid test" << std::endl;
+  result.unsafeGetTensorImpl()->tID = 1234;
+  
   setStrided(result, size, stride, storage_offset);
   return result;
 }
@@ -548,6 +552,10 @@ Tensor as_strided_qtensorimpl(const Tensor& self, IntArrayRef size, IntArrayRef 
       "Setting strides is possible only on uniformly quantized tensor");
   auto result = detail::make_tensor<QTensorImpl>(
       Storage(self.storage()), self.key_set(), quantizer);
+
+  std::cout << "as_strided_qtensorimpl, tid test" << std::endl;
+  result.unsafeGetTensorImpl()->tID = 5678;
+
   setStrided(result, size, stride, storage_offset);
   return result;
 }

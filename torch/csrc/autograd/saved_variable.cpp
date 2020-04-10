@@ -12,6 +12,9 @@
 #include <memory>
 #include <sstream>
 
+// FlashNeuron library
+#include <ATen/native/cuda/FlashNeuron.h>
+
 namespace torch { namespace autograd {
 
 SavedVariable::SavedVariable(const Variable& variable, bool is_output, bool is_inplace_view) {
@@ -106,21 +109,28 @@ const char* ERR_BACKWARD_TWICE =
     "the first time.";
 
 void FN_Engine::offload(at::Tensor t, int curOid, SavedVariable *backfn_loc, bool is_output) {
-  auto tid =  t.unsafeGetIntrusivePtr()->tID;
+  auto tID =  t.unsafeGetIntrusivePtr()->tID;
+  std::cout << "oID: " << curOid << ", tID: " << tID << std::endl;
   *backfn_loc = SavedVariable(t, is_output);
 
   return;
 }
 
-bool FN_Engine::prefetch(int oid) {
+bool FN_Engine::prefetch(int oID) {
   return true;
 }
 
-void FN_Engine::synchronize(int oid, bool is_output) {
+void FN_Engine::synchronize(int oID, bool is_output) {
   return;
 }
 
-void FN_Engine::drop(int oid, SavedVariable *backfn_loc) {
+void FN_Engine::drop(int oID, SavedVariable *backfn_loc) {
   return;
 }
+
+void FN_Engine::reset() {
+  at::native::FN_mngt.resetOid();
+  at::native::FN_mngt.resetTid();
+}
+
 }} // namespace torch::autograd

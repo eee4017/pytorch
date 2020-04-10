@@ -63,9 +63,10 @@ using PFInfo = std::pair<SavedVariable*, int>; // Information required for prefe
 struct FN_Engine {
  public:
   static void offload(at::Tensor t, int curOid, SavedVariable *backfn_loc, bool is_output);
-  static bool prefetch(int oid);
-  static void synchronize(int oid, bool is_output);
-  static void drop(int oid, SavedVariable *backfn_loc);
+  static bool prefetch(int oID);
+  static void synchronize(int oID, bool is_output);
+  static void drop(int oID, SavedVariable *backfn_loc);
+  static void reset();
  private:
   static void recordPFInfo(int oid, int tid, SavedVariable *backfn_loc);
 };

@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cmath>
 
+// FlashNeuron library
 #include <ATen/native/cuda/FlashNeuron.h>
 
 namespace at {
@@ -63,7 +64,9 @@ Tensor empty_cuda(IntArrayRef size, const TensorOptions& options, c10::optional<
 
   auto tensor = detail::make_tensor<TensorImpl>(storage_impl, DispatchKey::CUDATensorId);
   // Assign a tensorID to the newly created tensor
-  tensor.unsafeGetTensorImpl()->tID = FN_mngt.global_tID++;
+  //tensor.unsafeGetTensorImpl()->tID = FN_mngt.global_tID++;
+  FN_mngt.setTid();
+  tensor.unsafeGetTensorImpl()->tID = FN_mngt.getTid();
 
   // Default TensorImpl has size [0]
   if (size.size() != 1 || size[0] != 0) {
