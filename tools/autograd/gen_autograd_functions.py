@@ -36,6 +36,8 @@ FUNCTION_DEFINITION = CodeTemplate("""\
 variable_list ${op}::apply(variable_list&& grads) {
   ${thread_lock}
   ${asserts}
+  std::cout << "${op} oID test: " << this->getOid() << std::endl;
+
   IndexRangeGenerator gen;
   ${compute_index_ranges}
   variable_list grad_inputs(gen.size());

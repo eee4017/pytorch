@@ -3,6 +3,9 @@
 #include <ATen/TypeDefault.h>
 #include <ATen/core/op_registration/op_registration.h>
 
+// FlashNeuron library
+#include <ATen/native/cuda/FlashNeuron.h>
+
 // ${generated_comment}
 
 // NOTE [Sharded File]: on this file's split-into-shards state

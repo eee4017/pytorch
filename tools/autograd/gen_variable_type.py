@@ -215,7 +215,6 @@ if (compute_requires_grad( ${args_with_derivatives} )) {
 ASSIGN_GRAD_FN = CodeTemplate("""\
 grad_fn = std::shared_ptr<${op}>(new ${op}(${op_ctor}), deleteNode);
 grad_fn->set_next_edges(collect_next_edges( ${args_with_derivatives} ));
-grad_fn->setOid(at::globalContext().FN_Global.getOid());
 """)
 
 CALL_DEFAULT = CodeTemplate("""\
@@ -259,7 +258,7 @@ if (${cond}) {
 
 RECORD_FUNCTION = CodeTemplate("""\
 RECORD_FUNCTION("${name}", std::vector<c10::IValue>({${input_names}}), Node::peek_at_next_sequence_nr());
-at::globalContext().FN_Global.setOid();
+std::cout << "Function: ${name}" << std::endl;
 """)
 
 SELECT = CodeTemplate("""\
@@ -733,6 +732,7 @@ def emit_body(declaration):
     def save_variables(saved_variables, is_output, guard_for=lambda name: None):
         # assign the saved variables to the generated grad_fn
         stmts = []
+        offload_persist_flag = False
         for arg in saved_variables:
             name = arg['name']
             expr = arg.get('expr', arg['name'])
@@ -750,8 +750,15 @@ def emit_body(declaration):
                     expr = 'SavedVariable({}, {}, {})'.format(var, str(is_output).lower(), is_inplace_view)
                 else:
                     if guard is None:
-                        offload_flag = True
-                        expr = 'FN_Engine::offload({}, at::globalContext().FN_Global.getOid(), &(grad_fn->{}), {})'.format(var, name, str(is_output).lower())
+                        if var == "weight":
+                            expr = 'SavedVariable({}, {})'.format(var, str(is_output).lower())
+                        else:
+                            offload_flag = True
+                            if offload_persist_flag == False and is_output == False:
+                                offload_persist_flag = True
+                                stmts.append('at::native::FN_mngt.setOid();')
+
+                            expr = 'FN_Engine::offload({}, at::native::FN_mngt.getOid(), &(grad_fn->{}), {})'.format(var, name, str(is_output).lower())
                     else:
                         expr = 'SavedVariable({}, {})'.format(var, str(is_output).lower())
             elif arg['type'] == 'TensorList':
@@ -769,6 +776,8 @@ def emit_body(declaration):
                 stmts.append('if ({}) {{'.format(guard))
                 stmts.append('  grad_fn->{} = {};'.format(name, expr))
                 stmts.append('}')
+        if offload_persist_flag:
+            stmts.append('grad_fn->setOid(at::native::FN_mngt.getOid());')
         return stmts
 
     def declare_returned_variables():
