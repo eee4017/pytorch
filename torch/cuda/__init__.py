@@ -30,6 +30,9 @@ _queued_calls = []  # don't invoke these until initialization occurs
 _is_in_bad_fork = getattr(torch._C, "_cuda_isInBadFork", lambda: False)
 
 
+def FN_setting(flags: int):
+    return torch._C._cuda_FN_setting(flags)
+
 def is_available():
     r"""Returns a bool indicating if CUDA is currently available."""
     if (not hasattr(torch._C, '_cuda_isDriverSufficient') or

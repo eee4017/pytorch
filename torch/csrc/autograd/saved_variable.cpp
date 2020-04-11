@@ -110,8 +110,12 @@ const char* ERR_BACKWARD_TWICE =
 
 void FN_Engine::offload(at::Tensor t, int curOid, SavedVariable *backfn_loc, bool is_output) {
   auto tID =  t.unsafeGetIntrusivePtr()->tID;
-  std::cout << "oID: " << curOid << ", tID: " << tID << std::endl;
-  *backfn_loc = SavedVariable(t, is_output);
+  std::cout << "offload oID: " << curOid << ", tID: " << tID << std::endl;
+
+  if (!at::native::FN_mngt.is_offload()) {
+    *backfn_loc = SavedVariable(t, is_output);
+    return;
+  }
 
   return;
 }

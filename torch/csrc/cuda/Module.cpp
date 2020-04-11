@@ -482,6 +482,15 @@ PyObject * THCPModule_getCurrentBlasHandle_wrap(PyObject *self, PyObject *noargs
   END_HANDLE_TH_ERRORS
 }
 
+PyObject * THCPModule_FlashNeuron_setting(PyObject *_unused, PyObject *arg)
+{
+  HANDLE_TH_ERRORS
+  THPUtils_assert(THPUtils_checkLong(arg), "invalid argument to Arcp2pSetting");
+  int flags = (int) THPUtils_unpackLong(arg);
+  at::native::FN_mngt.setting(flags);
+  END_HANDLE_TH_ERRORS
+  Py_RETURN_NONE;
+}
 static struct PyMethodDef _THCPModule_methods[] = {
   {"_cuda_init",        (PyCFunction)THCPModule_initExtension,    METH_NOARGS,  nullptr},
   {"_cuda_setDevice",   (PyCFunction)THCPModule_setDevice_wrap,   METH_O,       nullptr},
@@ -511,6 +520,7 @@ static struct PyMethodDef _THCPModule_methods[] = {
   {"_cuda_sleep", (PyCFunction)THCPModule_cudaSleep, METH_O, nullptr},
   {"_cuda_lock_mutex",   (PyCFunction)THCPModule_cudaLockMutex,   METH_NOARGS,  nullptr},
   {"_cuda_unlock_mutex", (PyCFunction)THCPModule_cudaUnlockMutex, METH_NOARGS,  nullptr},
+  {"_cuda_FN_setting", (PyCFunction)THCPModule_FlashNeuron_setting, METH_O, nullptr},
 #ifdef USE_NCCL
   {"_nccl_version", (PyCFunction)THCPModule_nccl_version, METH_NOARGS, nullptr},
   {"_nccl_unique_id", (PyCFunction)THCPModule_nccl_unique_id, METH_NOARGS, nullptr},

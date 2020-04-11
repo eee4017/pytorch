@@ -27,6 +27,9 @@
 #include <cstddef>
 #include <string>
 
+// FlashNeuron library
+#include <ATen/native/cuda/FlashNeuron.h>
+
 namespace at {
 namespace native {
 namespace {
@@ -127,8 +130,9 @@ Tensor empty_cpu(IntArrayRef size, const TensorOptions& options_, c10::optional<
     /*resizeable=*/true);
 
   auto tensor = detail::make_tensor<TensorImpl>(std::move(storage_impl), at::DispatchKey::CPUTensorId);
+  FN_mngt.setTid();
   std::cout << "empty_cpu, tid test" << std::endl;
-  tensor.unsafeGetTensorImpl()->tID = 9012;
+  tensor.unsafeGetTensorImpl()->tID = FN_mngt.getTid();
 
   // Default TensorImpl has size [0]
   if (size.size() != 1 || size[0] != 0) {

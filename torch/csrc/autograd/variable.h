@@ -19,6 +19,9 @@
 #include <vector>
 #include <cstdint>
 
+// FlashNeuron library
+#include <ATen/native/cuda/FlashNeuron.h>
+
 namespace torch { namespace autograd {
 
 /// `Variable` is exactly the same as `Tensor` (i.e. we have `using Variable = at::Tensor`).
@@ -428,8 +431,12 @@ inline Variable make_variable_differentiable_view(
     data_impl_copy->set_autograd_meta(std::make_unique<DifferentiableViewMeta>(
       data_impl_copy.get(), std::move(base),
       creation_meta));
-    return Variable(data_impl_copy);
-    }
+//    return Variable(data_impl_copy);
+    auto result = Variable(data_impl_copy);
+    at::native::FN_mngt.setTid();
+    result.unsafeGetTensorImpl()->tID = at::native::FN_mngt.getTid();
+    return result;
+  }
   return Variable();
 }
 
@@ -444,7 +451,12 @@ inline Variable make_variable_non_differentiable_view(
       /*version_counter=*/impl::version_counter(base),
       /*allow_tensor_metadata_change=*/allow_tensor_metadata_change);
     data_impl_copy->set_autograd_meta(nullptr);
-    return Variable(data_impl_copy);
+//    return Variable(data_impl_copy);
+    auto result = Variable(data_impl_copy);
+    at::native::FN_mngt.setTid();
+    result.unsafeGetTensorImpl()->tID = at::native::FN_mngt.getTid();
+    return result;
+
   }
   return Variable();
 }

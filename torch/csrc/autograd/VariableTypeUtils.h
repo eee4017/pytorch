@@ -112,11 +112,17 @@ inline Tensor as_view(const Tensor & base, Tensor tensor, bool is_differentiable
     base_var = base_var._base();
   }
   if (is_differentiable) {
-    return make_variable_differentiable_view(std::move(base_var), std::move(tensor), creation_meta);
+//    return make_variable_differentiable_view(std::move(base_var), std::move(tensor), creation_meta);
+    auto result = make_variable_differentiable_view(std::move(base_var), std::move(tensor), creation_meta);
+    std::cout << "as_view0 tid test: " << result.unsafeGetTensorImpl()->tID << std::endl;
+    return result;
   } else {
     TORCH_CHECK(creation_meta == CreationMeta::DEFAULT,
                 "Non-differentiable views must have creation_meta=CreationMeta::DEFAULT");
-    return make_variable_non_differentiable_view(std::move(base_var), std::move(tensor));
+//    return make_variable_non_differentiable_view(std::move(base_var), std::move(tensor));
+    auto result = make_variable_non_differentiable_view(std::move(base_var), std::move(tensor));
+    std::cout << "as_view1 tid test: " << result.unsafeGetTensorImpl()->tID << std::endl;
+    return result;
   }
 }
 
