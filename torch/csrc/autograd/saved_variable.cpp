@@ -117,6 +117,13 @@ void FN_Engine::offload(at::Tensor t, int curOid, SavedVariable *backfn_loc, boo
     return;
   }
 
+  if (!at::globalContext().FN_Global.isOnDemand()) {
+    *backfn_loc = SavedVariable(t, is_output);
+    return;
+  }
+
+  insertToPFDict(oID, backfn_loc, tID);
+
   return;
 }
 
@@ -135,6 +142,10 @@ void FN_Engine::drop(int oID, SavedVariable *backfn_loc) {
 void FN_Engine::reset() {
   at::native::FN_mngt.resetOid();
   at::native::FN_mngt.resetTid();
+}
+
+void FN_Engine::insertToPFDict(int oID, int tID, SavedVaviable *backfn_loc) {
+
 }
 
 }} // namespace torch::autograd
