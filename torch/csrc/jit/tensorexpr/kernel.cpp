@@ -41,7 +41,20 @@ static bool checkTypes(const ScalarType highType, const int typeConstraints) {
   return false;
 }
 
-static ExprHandle promoteToDtype(ExprHandle e, ScalarType dt) {
+} // namespace
+
+namespace torch {
+namespace jit {
+namespace tensorexpr {
+
+std::string buildErrorMessage(const std::string& s) {
+  // TODO: Update this generic error message to include details regarding
+  // turning off the fuser.
+  static const std::string generic_error_message = "";
+  return s + " " + generic_error_message;
+}
+
+ExprHandle promoteToDtype(ExprHandle e, ScalarType dt) {
   if (e.dtype().scalar_type() == dt) {
     return e;
   }
@@ -58,19 +71,6 @@ static ExprHandle promoteToDtype(ExprHandle e, ScalarType dt) {
       throw unsupported_dtype();
   }
   return e;
-}
-
-} // namespace
-
-namespace torch {
-namespace jit {
-namespace tensorexpr {
-
-std::string buildErrorMessage(const std::string& s) {
-  // TODO: Update this generic error message to include details regarding
-  // turning off the fuser.
-  static const std::string generic_error_message = "";
-  return s + " " + generic_error_message;
 }
 
 static int te_cuda_pointwise_loop_levels = -1;
@@ -505,6 +505,24 @@ void promoteInputs(std::vector<ExprHandle>& inputs, const int typeConstraints) {
   }
 }
 
+ExprHandle promoteIntegerToDefaultType(const ExprHandle& e) {
+  auto scalarType = static_cast<c10::ScalarType>(e.dtype().scalar_type());
+  if (!c10::isIntegralType(scalarType, /*includeBool*/ true)) {
+    return e;
+  }
+
+  auto defaultType = c10::typeMetaToScalarType(c10::get_default_dtype());
+
+  // We intend to promote Integers to floating-point types
+  TORCH_INTERNAL_ASSERT(
+      !c10::isIntegralType(defaultType, /*includeBool*/ true));
+
+  return Cast::make(
+      Dtype(
+          static_cast<tensorexpr::ScalarType>(defaultType), e.dtype().lanes()),
+      e);
+}
+
 ExprHandle demoteOutput(
     const ExprHandle& e,
     const c10::optional<ScalarType> type) {
@@ -739,6 +757,7 @@ std::vector<ExprHandle> TensorExprKernel::inferSizesForValue(
     case aten::lgamma:
     case aten::type_as:
     case aten::masked_fill:
+    case aten::sign:
       return sizesForValue(v->node()->input(0));
 
     case aten::sub:
@@ -871,24 +890,6 @@ std::vector<ExprHandle> TensorExprKernel::inferSizesForValue(
       throw malformed_input(msg);
     }
   }
-}
-
-ExprHandle promoteIntegerToDefaultType(const ExprHandle& e) {
-  auto scalarType = static_cast<c10::ScalarType>(e.dtype().scalar_type());
-  if (!c10::isIntegralType(scalarType, /*includeBool*/ true)) {
-    return e;
-  }
-
-  auto defaultType = c10::typeMetaToScalarType(c10::get_default_dtype());
-
-  // We intend to promote Integers to floating-point types
-  TORCH_INTERNAL_ASSERT(
-      !c10::isIntegralType(defaultType, /*includeBool*/ true));
-
-  return Cast::make(
-      Dtype(
-          static_cast<tensorexpr::ScalarType>(defaultType), e.dtype().lanes()),
-      e);
 }
 
 ExprHandle promoteHalfToFloat(const ExprHandle& e) {
@@ -2092,6 +2093,10 @@ Tensor tensorexpr::computeOperandValue(
             return tensorexpr::abs(promoteHalfToFloat(a));
           },
           kIntegralTypes | kFloatingPointTypes | kBoolType);
+    } break;
+
+    case aten::sign: {
+      return computeSign(inputs, outputShape);
     } break;
 
     case aten::ceil: {
