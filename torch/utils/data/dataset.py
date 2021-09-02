@@ -99,6 +99,14 @@ class Dataset(Generic[T_co]):
                         warnings.warn("Results %s of calling %s over %s got promoted to DF" %
                                       (type(result_pipe), function_name, type(source_dp)))
                         result_pipe = result_pipe.trace_as_dataframe()
+                        result_pipe._dp_contains_dataframe = True
+                elif getattr(source_dp, '_dp_contains_dataframe', False):
+                    if function_name not in UNTRACABLE_DATAFRAME_PIPES:
+                        print('want to trace', result_pipe)
+                        print('of depth ', getattr(result_pipe, '_dp_nesting_depth', None))
+                        if getattr(result_pipe, '_dp_nesting_depth', 0) == 0:
+                            result_pipe = result_pipe.trace_as_dataframe()
+                            result_pipe._dp_contains_dataframe = True
 
             return result_pipe
 
