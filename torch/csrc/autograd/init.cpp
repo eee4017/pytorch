@@ -76,6 +76,7 @@ PyObject* THPAutograd_initExtension(PyObject* _unused, PyObject *unused) {
       .def("cuda_elapsed_us", &LegacyEvent::cudaElapsedUs)
       .def("has_cuda", &LegacyEvent::hasCuda)
       .def("shapes", &LegacyEvent::shapes)
+      .def("ptrs", &LegacyEvent::ptrs)
       .def("cpu_memory_usage", &LegacyEvent::cpuMemoryUsage)
       .def("cuda_memory_usage", &LegacyEvent::cudaMemoryUsage)
       .def("handle", &LegacyEvent::handle)
@@ -143,6 +144,13 @@ PyObject* THPAutograd_initExtension(PyObject* _unused, PyObject *unused) {
           return e.shapes();
         } else {
           return std::vector<std::vector<int64_t>>();
+        }
+      })
+      .def("ptrs", [](const KinetoEvent& e) {
+        if (e.hasPtrs()) {
+          return e.ptrs();
+        } else {
+          return std::vector<int64_t>();
         }
       })
       .def("dtypes", [](const KinetoEvent& e) {

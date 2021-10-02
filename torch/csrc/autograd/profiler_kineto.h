@@ -35,6 +35,7 @@ struct KinetoObserverContext : public at::ObserverContext {
   uint64_t startThreadId;
   uint64_t endThreadId;
   c10::optional<std::vector<std::vector<int64_t>>> shapes;
+  c10::optional<std::vector<int64_t>> ptrs;
   c10::optional<std::vector<std::string>> dtypes;
   int64_t sequenceNr;
   uint64_t fwdThreadId;
@@ -67,8 +68,16 @@ struct TORCH_API KinetoEvent {
     return shapes_ != c10::nullopt;
   }
 
+  bool hasPtrs() const {
+    return ptrs_ != c10::nullopt;
+  }
+
   const std::vector<std::vector<int64_t>>& shapes() const {
     return *shapes_;
+  }
+
+  const std::vector<int64_t>& ptrs() const {
+    return *ptrs_;
   }
 
   bool hasTypes() const {
@@ -116,6 +125,11 @@ struct TORCH_API KinetoEvent {
 
   KinetoEvent& shapes(const std::vector<std::vector<int64_t>>& shapes) {
     shapes_ = shapes;
+    return *this;
+  }
+
+  KinetoEvent& ptrs(const std::vector<int64_t>& ptrs) {
+    ptrs_ = ptrs;
     return *this;
   }
 
@@ -202,6 +216,7 @@ struct TORCH_API KinetoEvent {
 
   uint8_t activity_type_ = 0;
   c10::optional<std::vector<std::vector<int64_t>>> shapes_;
+  c10::optional<std::vector<int64_t>> ptrs_;
   c10::optional<std::vector<std::string>> stack_;
   c10::optional<std::vector<std::string>> dtypes_;
   uint64_t flops_ = 0;

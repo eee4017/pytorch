@@ -836,13 +836,13 @@ class Interval(object):
         return self.end - self.start
 
 
-Kernel = namedtuple('Kernel', ['name', 'device', 'duration'])
+Kernel = namedtuple('Kernel', ['name', 'device', 'duration', 'start_time'])
 
 
 class FunctionEvent(FormattedTimesMixin):
     """Profiling information about a single function."""
     def __init__(
-            self, id, name, thread, start_us, end_us, fwd_thread=None, input_shapes=None,
+            self, id, name, thread, start_us, end_us, fwd_thread=None, input_shapes=None, input_ptrs=None,
             stack=None, scope=0, cpu_memory_usage=0, cuda_memory_usage=0, is_async=False,
             is_remote=False, sequence_nr=-1, node_id=-1, device_type=DeviceType.CPU, device_index=0,
             is_legacy=False, flops=None, trace_name=None):
@@ -858,6 +858,7 @@ class FunctionEvent(FormattedTimesMixin):
         self.cpu_children: List[FunctionEvent] = []
         self.cpu_parent: Optional[FunctionEvent] = None
         self.input_shapes: Tuple[int, ...] = input_shapes
+        self.input_ptrs: List[int] = input_ptrs
         self.stack: List = stack
         self.scope: int = scope
         self.cpu_memory_usage: int = cpu_memory_usage
@@ -870,9 +871,9 @@ class FunctionEvent(FormattedTimesMixin):
         self.is_legacy: bool = is_legacy
         self.flops: Optional[float] = flops
 
-    def append_kernel(self, name, device, duration):
+    def append_kernel(self, name, device, duration, start_time=None):
         assert self.device_type == DeviceType.CPU
-        self.kernels.append(Kernel(name, device, duration))
+        self.kernels.append(Kernel(name, device, duration, start_time))
 
     def append_cpu_child(self, child):
         """Append a CPU child of type FunctionEvent.
@@ -1163,6 +1164,7 @@ def parse_kineto_results(result):
             end_us=rel_end_us,
             fwd_thread=kineto_event.fwd_thread_id(),
             input_shapes=kineto_event.shapes(),
+            input_ptrs=kineto_event.ptrs(),
             stack=[entry for entry in kineto_event.stack() if filter_stack_entry(entry)],
             scope=kineto_event.scope(),
             cpu_memory_usage=cpu_memory_usage,
@@ -1180,7 +1182,7 @@ def parse_kineto_results(result):
                 fe.append_kernel(
                     fe.name,
                     fe.device_index,
-                    cuda_time)
+                    cuda_time, kineto_event.start_us())
                 fe.is_legacy = True
         function_events.append(fe)
         corr_id = kineto_event.linked_correlation_id()
@@ -1198,7 +1200,7 @@ def parse_kineto_results(result):
                     fe.append_kernel(
                         f_evt.name,
                         f_evt.device_index,
-                        f_evt.time_range.end - f_evt.time_range.start)
+                        f_evt.time_range.end - f_evt.time_range.start, f_evt.time_range.start)
                 elif f_evt.device_type == DeviceType.CPU:
                     # make sure that 'thread' of a CPU Kineto (e.g. CUDA Runtime) event is associated
                     # with the 'thread' of the corresponding linked PyTorch event to properly track
@@ -1314,6 +1316,7 @@ def parse_legacy_records(thread_records):
                     end_us=start_record.cpu_elapsed_us(record),
                     fwd_thread=start.fwd_thread_id(),
                     input_shapes=start.shapes(),
+                    input_ptrs=start.ptrs(),
                     stack=[entry for entry in start.stack() if filter_stack_entry(entry)],
                     scope=start.scope(),
                     cpu_memory_usage=cpu_memory_usage,

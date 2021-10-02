@@ -211,7 +211,8 @@ void ProfilerThreadLocalState::pushRange(
     const at::RecordFunction& fn,
     const bool record_cuda,
     const char* msg,
-    std::vector<std::vector<int64_t>>&& shapes) {
+    std::vector<std::vector<int64_t>>&& shapes,
+    std::vector<int64_t>&& ptrs) {
   if (config_.state == ProfilerState::Disabled) {
     return;
   }
@@ -219,6 +220,7 @@ void ProfilerThreadLocalState::pushRange(
     cuda_stubs()->nvtxRangePushA(getNvtxStr(
         fn.name(), msg, fn.seqNr(), shapes).c_str());
   } else {
+
     LegacyEvent evt(
         EventKind::PushRange,
         fn.name(),
@@ -226,11 +228,13 @@ void ProfilerThreadLocalState::pushRange(
         record_cuda,
         fn.handle(),
         std::move(shapes),
+        std::move(ptrs),
         at::RecordFunction::getDefaultNodeId(),
         fn.isAsync());
     evt.setSequenceNr(fn.seqNr());
     evt.setFwdThreadId(fn.forwardThreadId());
     evt.setScope((uint8_t)fn.scope());
+
     if (config_.with_flops) {
       evt.setExtraArgs(saveExtraArgs(fn));
       evt.setFlops(computeFlops(std::string(fn.name().str()), evt.extraArgs()));
@@ -379,6 +383,25 @@ std::vector<std::vector<int64_t>> inputSizes(const at::RecordFunction& fn) {
   return sizes;
 }
 
+std::vector<int64_t> inputPtrs(const at::RecordFunction& fn) {
+  std::vector<int64_t> ptrs;
+  ptrs.reserve(fn.inputs().size());
+  for (const c10::IValue& input : fn.inputs()) {
+    if (!input.isTensor()) {
+      ptrs.emplace_back();
+      continue;
+    }
+    const at::Tensor& tensor = input.toTensor();
+    if (tensor.defined()) {
+      int64_t data_ptr = (int64_t)(input.toTensor().data_ptr());
+      ptrs.push_back(data_ptr);
+    } else {
+      ptrs.emplace_back();
+    }
+  }
+  return ptrs;
+}
+
 namespace {
 
 enum EventIValueIdx {
@@ -445,7 +468,8 @@ void pushProfilingCallbacksLegacy() {
         auto* msg = (fn.seqNr() >= 0) ? ", seq = " : "";
         if (state_ptr->config().report_input_shapes) {
           auto sizes = inputSizes(fn);
-          state_ptr->pushRange(fn, record_cuda, msg, std::move(sizes));
+          auto ptrs = inputPtrs(fn);
+          state_ptr->pushRange(fn, record_cuda, msg, std::move(sizes), std::move(ptrs));
         } else {
           state_ptr->pushRange(fn, record_cuda, msg);
         }

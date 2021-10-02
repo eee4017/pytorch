@@ -3,6 +3,7 @@
 #include <c10/macros/Macros.h>
 #include <c10/util/ThreadLocal.h>
 #include <algorithm>
+#include <iostream>
 #include <cstdlib>
 #include <random>
 
@@ -475,7 +476,6 @@ void RecordFunction::before(
   state_->op_input_size = op.schema().arguments().size();
   state_->op_output_size = op.schema().returns().size();
   state_->name_ = StringView(op.schema().name());
-
   manager().runStartCallbacks(*this);
 }
 

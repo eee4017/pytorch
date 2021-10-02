@@ -87,6 +87,9 @@ struct KinetoThreadLocalState : public ProfilerThreadLocalState {
       if (ctx->shapes && !ctx->shapes->empty()) {
         kineto_events_.back().shapes(*ctx->shapes);
       }
+      if (ctx->ptrs && !ctx->ptrs->empty()) {
+        kineto_events_.back().ptrs(*ctx->ptrs);
+      }
       if (ctx->dtypes && !ctx->dtypes->empty()) {
         kineto_events_.back().dtypes(*ctx->dtypes);
       }
@@ -240,6 +243,7 @@ void pushProfilingCallbacks() {
 
         if (config.report_input_shapes) {
           ctx_ptr->shapes = inputSizes(fn);
+          ctx_ptr->ptrs = inputPtrs(fn);
           ctx_ptr->dtypes = inputTypes(fn);
         }
 
