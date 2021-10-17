@@ -126,12 +126,12 @@ struct TORCH_API RecordFunction {
     return state_->sequence_nr_;
   }
 
-  const std::vector<c10::IValue>& inputs() const {
+  std::vector<c10::IValue>& inputs() const {
     TORCH_INTERNAL_ASSERT_DEBUG_ONLY(state_, "Called inputs() on inactive RecordFunction");
     return state_->inputs_;
   }
 
-  const std::vector<c10::IValue>& outputs() const {
+  std::vector<c10::IValue>& outputs() const {
     TORCH_INTERNAL_ASSERT_DEBUG_ONLY(state_, "Called outputs() on inactive RecordFunction");
     return state_->outputs_;
   }
@@ -275,7 +275,7 @@ struct TORCH_API RecordFunction {
     bool needs_inputs = false;
 
     // Whether any of the picked callbacks require outputs
-    bool needs_outputs = false;
+    bool needs_outputs = true;
 
     // In cases when RecordFunction might be active but we chose not to
     // use the observers (e.g. operator is not observed), this boolean

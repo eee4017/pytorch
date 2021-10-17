@@ -142,8 +142,8 @@ void checkSameGPU(CheckedFrom c, const TensorArg& t1, const TensorArg& t2) {
   }
   TORCH_CHECK(
     t1->get_device() == t2->get_device(),
-    "Expected tensor for ", t1, " to have the same device as tensor for ", t2,
-    "; but device ", t1->get_device(), " does not equal ", t2->get_device(),
+    "Expected tensor for ", t1 , " " , t1->data_ptr() , " to have the same device as tensor for ", t2, " " , t2->data_ptr(),
+    "; but device ", t1->device(), " does not equal ", t2->device(),
     " (while checking arguments for ", c, ")");
 }
 

@@ -1331,6 +1331,9 @@ struct C10_API TensorImpl : public c10::intrusive_ptr_target {
     return (*device_opt_).type();
   }
 
+  void scheduleMemcopyAsync(Device dst_device, CopyBytesFunction copyBytesCallback, bool swap_out = true);
+  void onDemendSwapIn();
+
   /**
    * @brief Extends the outer-most dimension of this tensor by num elements,
    * preserving the existing data.

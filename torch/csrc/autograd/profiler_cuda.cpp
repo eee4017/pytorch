@@ -48,7 +48,7 @@ struct CUDAMethods : public CUDAStubs {
     }
     TORCH_CUDA_CHECK(cudaEventRecord(cuda_event_ptr, stream));
   }
-
+  
   float elapsed(const CUDAEventStub* event, const CUDAEventStub* event2) const override{
     TORCH_CUDA_CHECK(cudaEventSynchronize(event->get()));
     TORCH_CUDA_CHECK(cudaEventSynchronize(event2->get()));
@@ -71,6 +71,18 @@ struct CUDAMethods : public CUDAStubs {
     ::nvtxRangePop();
   }
 
+  void insertHostFunction(std::function<void(void*)> host_func, void* data)
+      const override {
+    if (host_func) {
+      cudaHostFn_t* ptr_ptr_fun = host_func.target<cudaHostFn_t>();
+      if (ptr_ptr_fun != nullptr) {
+        cudaHostFn_t ptr_fun = *ptr_ptr_fun;
+        auto stream = at::cuda::getCurrentCUDAStream();
+        TORCH_CUDA_CHECK(cudaLaunchHostFunc(stream, ptr_fun, data));
+      }
+    }
+  }
+
   void onEachDevice(std::function<void(int)> op) const override {
     at::cuda::OptionalCUDAGuard device_guard;
     // NOLINTNEXTLINE(bugprone-signed-char-misuse)
@@ -87,6 +99,41 @@ struct CUDAMethods : public CUDAStubs {
 
   bool enabled() const override {
     return true;
+  }
+
+  CUDAEventStub registerStreamEvent(CUDAStreamStub stream) const override {
+    CUevent_st* cuda_event_ptr;
+    TORCH_CUDA_CHECK(cudaEventCreate(&cuda_event_ptr));
+    TORCH_CUDA_CHECK(cudaEventRecord(cuda_event_ptr, stream.get()));
+
+    return std::shared_ptr<CUevent_st>(cuda_event_ptr, [](CUevent_st* ptr) {
+      TORCH_CUDA_CHECK(cudaEventDestroy(ptr));
+    });
+  }
+
+   CUDAEventStub registerComputeStreamEvent() const override {
+    CUevent_st* cuda_event_ptr;
+    auto stream = at::cuda::getCurrentCUDAStream();
+    TORCH_CUDA_CHECK(cudaEventCreate(&cuda_event_ptr));
+    TORCH_CUDA_CHECK(cudaEventRecord(cuda_event_ptr, stream));
+
+    return std::shared_ptr<CUevent_st>(cuda_event_ptr, [](CUevent_st* ptr) {
+      TORCH_CUDA_CHECK(cudaEventDestroy(ptr));
+    });
+  }
+
+
+  void issueStreamWaitEvent(CUDAEventStub event, CUDAStreamStub stream) const override {
+    TORCH_CUDA_CHECK(cudaStreamWaitEvent(stream.get(), event.get()));
+  }
+  
+  CUDAStreamStub createStream() const override {
+    CUstream_st* cuda_stream_ptr;
+    TORCH_CUDA_CHECK(cudaStreamCreate(&cuda_stream_ptr));
+
+    return std::shared_ptr<CUstream_st>(cuda_stream_ptr, [](CUstream_st* ptr) {
+      // TORCH_CUDA_CHECK(cudaStreamDestroy(ptr));
+    });
   }
 };
 

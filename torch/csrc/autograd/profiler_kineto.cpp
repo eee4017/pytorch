@@ -1,4 +1,5 @@
 #include <torch/csrc/autograd/profiler_kineto.h>
+#include <torch/csrc/autograd/command_dispatcher.h>
 
 #include <torch/csrc/jit/frontend/tracer.h>
 #include <torch/csrc/jit/runtime/operator.h>
@@ -218,6 +219,8 @@ KinetoThreadLocalState* getProfilerTLSState() {
   return static_cast<KinetoThreadLocalState*>(state);
 }
 
+
+
 void pushProfilingCallbacks() {
   auto state_ptr = getProfilerTLSState();
   TORCH_INTERNAL_ASSERT(state_ptr, "Expected profiler state set");
@@ -414,6 +417,7 @@ void enableProfiler(
   if (activities.count(ActivityType::CPU)) {
     pushProfilingCallbacks();
   }
+  comandDispatcherInitializer();
 
   libkineto::api().activityProfiler().startTrace();
 
@@ -445,6 +449,8 @@ std::unique_ptr<ProfilerResult> disableProfiler() {
   auto trace = libkineto::api().activityProfiler().stopTrace();
   TORCH_CHECK(trace);
   state_ptr->addTraceEvents(*trace);
+  comandDispatcherFinalizer();
+
   return std::make_unique<ProfilerResult>(
       std::move(state_ptr->kineto_events_),
       state_ptr->consolidate(),

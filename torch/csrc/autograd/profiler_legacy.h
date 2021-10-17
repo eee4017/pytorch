@@ -25,6 +25,8 @@
 
 struct CUevent_st;
 typedef std::shared_ptr<CUevent_st> CUDAEventStub;
+struct CUstream_st;
+typedef std::shared_ptr<CUstream_st> CUDAStreamStub;
 
 namespace torch { namespace autograd {
 
@@ -52,15 +54,39 @@ struct TORCH_API CUDAStubs {
   virtual bool enabled() const {
     return false;
   }
+  virtual void insertHostFunction(std::function<void(void*)> host, void* data)
+      const {
+    fail();
+  }
   virtual void onEachDevice(std::function<void(int)> op) const {
     fail();
   }
   virtual void synchronize() const {
     fail();
   }
+
+  virtual CUDAEventStub registerStreamEvent(CUDAStreamStub stream) const {
+    fail();
+    return nullptr;
+  }
+
+  virtual CUDAEventStub registerComputeStreamEvent() const {
+    fail();
+    return nullptr;
+  }
+
+  virtual void issueStreamWaitEvent(CUDAEventStub event, CUDAStreamStub stream)
+      const {
+    fail();
+  }
+
+  virtual CUDAStreamStub createStream() const {
+    fail();
+    return nullptr;
+  }
   virtual ~CUDAStubs();
 
-private:
+ private:
   void fail() const {
     AT_ERROR("CUDA used in profiler but not enabled.");
   }
