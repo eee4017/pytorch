@@ -521,43 +521,60 @@ void TensorImpl::copy_tensor_metadata(
 
 // See TensorImpl::Extend, TensorImpl::FreeMemory
 void TensorImpl::scheduleMemcopyAsync(Device dst_device, CopyBytesFunction copyBytesCallback, bool swap_out) {
-  auto oldData = std::move(storage_.data_ptr());
-  auto oldSize = numel_;
-  auto dataSize = oldSize * itemsize();
-
-  // auto* newData = raw_mutable_data(data_type_);
-  // new a space in dst device; see raw_mutable_data 
-  auto allocator = GetAllocator(dst_device.type());
   if (data_type_.placementNew()) {
-    // For types that need placement new, we will call it, as well as
-    // making sure that when the data is freed, it calls the right
-    // destruction procedure.
-    auto size = numel_;
-    auto dtor = data_type_.placementDelete();
-    auto data_ptr = allocator->allocate(numel_ * data_type_.itemsize());
-    storage_.set_data_ptr_noswap(PlacementDeleteContext::makeDataPtr(
-        std::move(data_ptr), dtor, size, dst_device));
-    data_type_.placementNew()(storage_.data(), numel_);
-  } else {
-    // For fundamental type, new and delete is easier.
-    storage_.set_data_ptr_noswap(
-        allocator->allocate(numel_ * data_type_.itemsize()));
+    std::cerr << "ERROR! placementNew did not support\n";
   }
-  storage_.set_nbytes(numel_ * data_type_.itemsize());
+  // original_device_opt_ = device_opt_;
+  // device_opt_ = dst_device;
+  device_opt_ = c10::Device(c10::DeviceType::CPU, 0);
 
-  // Storage new_storage = Storage::create_legacy(dst_device);
-  std::cerr << "scheduleMemcopyAsync " << device() << " " << dst_device << "\n";
-  copyBytesCallback(dataSize, oldData.get(), device(), storage_.data(), dst_device);
-  device_opt_ = dst_device;
-  // if(swap_out){
-  //   is_temporary_swap_out_ = true;
-  //   swap_original_device_opt_ = device_opt_;
-  //   device_opt_ = dst_device;
+  // auto storage_impl_ = storage_.unsafeGetStorageImpl();
+  // storage_impl_->swap_out(dst_device, copyBytesCallback);
+  // auto oldData = std::move(storage_.data_ptr());
+  // auto oldSize = numel_;
+  // auto dataSize = oldSize * itemsize();
+
+  // // auto* newData = raw_mutable_data(data_type_);
+  // // new a space in dst device; see raw_mutable_data 
+  // auto allocator = GetAllocator(dst_device.type());
+  // if (data_type_.placementNew()) {
+  //   // For types that need placement new, we will call it, as well as
+  //   // making sure that when the data is freed, it calls the right
+  //   // destruction procedure.
+  //   auto size = numel_;
+  //   auto dtor = data_type_.placementDelete();
+  //   auto data_ptr = allocator->allocate(numel_ * data_type_.itemsize());
+  //   storage_.set_data_ptr_noswap(PlacementDeleteContext::makeDataPtr(
+  //       std::move(data_ptr), dtor, size, dst_device));
+  //   data_type_.placementNew()(storage_.data(), numel_);
   // } else {
-  //   is_temporary_swap_out_ = false;
-  //   device_opt_ = swap_original_device_opt_;
+  //   // For fundamental type, new and delete is easier.
+  //   storage_.set_data_ptr_noswap(
+  //       allocator->allocate(numel_ * data_type_.itemsize()));
   // }
-  storage_offset_ = 0;
+  // storage_.set_nbytes(numel_ * data_type_.itemsize());
+
+  // // Storage new_storage = Storage::create_legacy(dst_device);
+  // std::cerr << "scheduleMemcopyAsync " << device() << " " << dst_device << " " << oldData.get() << " " << storage_.data() << "\n";
+  // copyBytesCallback(dataSize, oldData.get(), device(), storage_.data(), dst_device);
+  // copyBytesCallback_ = copyBytesCallback;
+
+  // storage_offset_ = 0;
+}
+
+void TensorImpl::onDemendSwapIn() {
+  device_opt_ = c10::Device(c10::DeviceType::CUDA, 0);
+  // if(swapped_out_){
+  //   std::cerr << "onDemendSwapIn: swapping in " << *original_device_opt_ << "\n";
+  // } else {
+  //   std::cerr << "onDemendSwapIn: WARNING! tensor is already swapped in " << device() << "\n";
+  // }
+  // if(original_device_opt_){
+  //   auto storage_impl_ = storage_.unsafeGetStorageImpl();
+  //   storage_impl_->swap_in();
+  // } else{
+  //   std::cerr << "onDemendSwapIn: ERROR! has no original_device_opt_\n";
+  // }
 }
 
 namespace impl {

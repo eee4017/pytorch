@@ -4,8 +4,16 @@
 #include <c10/core/ScalarType.h>
 
 #include <c10/util/intrusive_ptr.h>
+#include <deque>
 
 namespace c10 {
+
+using CopyBytesFunction = void (*)(
+    size_t nbytes,
+    const void* src,
+    Device src_device,
+    void* dst,
+    Device dst_device);
 
 // A storage represents the underlying backing data buffer for a
 // tensor.  This concept was inherited from the original Torch7
@@ -111,55 +119,30 @@ struct C10_API StorageImpl final : public c10::intrusive_ptr_target {
   };
 
   // Returns the previous data_ptr
-  at::DataPtr set_data_ptr(at::DataPtr&& data_ptr) {
-    std::swap(data_ptr_, data_ptr);
-    return std::move(data_ptr);
-  };
+  at::DataPtr set_data_ptr(at::DataPtr&& data_ptr);
 
-  void set_data_ptr_noswap(at::DataPtr&& data_ptr) {
-    data_ptr_ = std::move(data_ptr);
-  }
+  void set_data_ptr_noswap(at::DataPtr&& data_ptr);
 
   // TODO: Return const ptr eventually if possible
-  void* data() {
-    return data_ptr_.get();
-  }
+  void* data();
 
-  void* data() const {
-    return data_ptr_.get();
-  }
+  void* data() const;
 
-  at::DeviceType device_type() const {
-    return data_ptr_.device().type();
-  }
+  at::DeviceType device_type() const;
 
-  at::Allocator* allocator() {
-    return allocator_;
-  }
+  at::Allocator* allocator();
 
-  const at::Allocator* allocator() const {
-    return allocator_;
-  };
+  const at::Allocator* allocator() const;
 
   // You generally shouldn't use this method, but it is occasionally
   // useful if you want to override how a tensor will be reallocated,
   // after it was already allocated (and its initial allocator was
   // set)
-  void set_allocator(at::Allocator* allocator) {
-    allocator_ = allocator;
-  }
+  void set_allocator(at::Allocator* allocator);
 
-  Device device() const {
-    return data_ptr_.device();
-  }
+  Device device() const;
 
-  void set_resizable(bool resizable) {
-    if (resizable) {
-      // We need an allocator to be resizable
-      AT_ASSERT(allocator_);
-    }
-    resizable_ = resizable;
-  }
+  void set_resizable(bool resizable);
 
   /**
    * Can only be called when use_count is 1
@@ -167,22 +150,14 @@ struct C10_API StorageImpl final : public c10::intrusive_ptr_target {
   void UniqueStorageShareExternalPointer(
       void* src,
       size_t size_bytes,
-      DeleterFnPtr d = nullptr) {
-    UniqueStorageShareExternalPointer(
-        at::DataPtr(src, src, d, data_ptr_.device()), size_bytes);
-  }
+      DeleterFnPtr d = nullptr);
 
   /**
    * Can only be called when use_count is 1
    */
   void UniqueStorageShareExternalPointer(
       at::DataPtr&& data_ptr,
-      size_t size_bytes) {
-    data_ptr_ = std::move(data_ptr);
-    size_bytes_ = size_bytes;
-    allocator_ = nullptr;
-    resizable_ = false;
-  }
+      size_t size_bytes);
 
   // This method can be used only after storage construction and cannot be used
   // to modify storage status
@@ -193,9 +168,20 @@ struct C10_API StorageImpl final : public c10::intrusive_ptr_target {
   bool received_cuda() {
     return received_cuda_;
   }
+  
+  DataPtr swap_out(Device to_device, CopyBytesFunction copyBytesCallback);
+  DataPtr swap_in();
+  void swap_to(Device to_device);
+  void release_old_data_ptr();
+
+  bool is_swapped_out_ = false;
 
  private:
+  Allocator* original_allocator_;
+  CopyBytesFunction copyBytesCallback_;
+
   DataPtr data_ptr_;
+  // std::deque<DataPtr> data_ptr_queue_;
   size_t size_bytes_;
   bool resizable_;
   // Identifies that Storage was received from another process and doesn't have

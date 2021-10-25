@@ -255,35 +255,35 @@ struct HostAllocator
 
 }  // namespace
 
-static HostAllocator allocator;
+// static HostAllocator allocator;
 
-cudaError_t THCCachingHostAllocator_recordEvent(void *ptr, at::cuda::CUDAStream stream)
-{
-  return allocator.recordEvent(ptr, stream);
-}
+// cudaError_t THCCachingHostAllocator_recordEvent(void *ptr, at::cuda::CUDAStream stream)
+// {
+//   return allocator.recordEvent(ptr, stream);
+// }
 
-void THCCachingHostAllocator_emptyCache()
-{
-  allocator.emptyCache();
-}
+// void THCCachingHostAllocator_emptyCache()
+// {
+//   allocator.emptyCache();
+// }
 
-static void THCCachingHostDeleter(void* ptr) {
-  allocator.free(ptr);
-}
+// static void THCCachingHostDeleter(void* ptr) {
+//   allocator.free(ptr);
+// }
 
-struct THCCachingHostAllocator final : public at::Allocator {
-  at::DataPtr allocate(size_t size) const override {
-    THAssert(size >= 0);
-    void *ptr;
-    THCudaCheck(allocator.malloc(&ptr, size));
-    return {ptr, ptr, &THCCachingHostDeleter, at::DeviceType::CPU};
-  }
-  at::DeleterFnPtr raw_deleter() const override {
-    return &THCCachingHostDeleter;
-  }
-};
+// struct THCCachingHostAllocator final : public at::Allocator {
+//   at::DataPtr allocate(size_t size) const override {
+//     THAssert(size >= 0);
+//     void *ptr;
+//     THCudaCheck(allocator.malloc(&ptr, size));
+//     return {ptr, ptr, &THCCachingHostDeleter, at::DeviceType::CPU};
+//   }
+//   at::DeleterFnPtr raw_deleter() const override {
+//     return &THCCachingHostDeleter;
+//   }
+// };
 
-static THCCachingHostAllocator thc_caching_host_allocator;
-at::Allocator* getTHCCachingHostAllocator() {
-  return &thc_caching_host_allocator;
-}
+// static THCCachingHostAllocator thc_caching_host_allocator;
+// at::Allocator* getTHCCachingHostAllocator() {
+//   return &thc_caching_host_allocator;
+// }

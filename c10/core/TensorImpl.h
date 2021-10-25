@@ -1331,7 +1331,9 @@ struct C10_API TensorImpl : public c10::intrusive_ptr_target {
     return (*device_opt_).type();
   }
 
-  void scheduleMemcopyAsync(Device dst_device, CopyBytesFunction copyBytesCallback, bool swap_out = true);
+
+
+  void scheduleMemcopyAsync(Device dst_device, CopyBytesFunction copyBytesCallback, bool swapping_out = true);
   void onDemendSwapIn();
 
   /**
@@ -2046,6 +2048,10 @@ struct C10_API TensorImpl : public c10::intrusive_ptr_target {
   // (which do not have a device.)
   c10::optional<c10::Device> device_opt_;
 
+  CopyBytesFunction copyBytesCallback_;
+  c10::optional<c10::Device> original_device_opt_;
+
+  bool swapped_out_ = false;
   // Tensor is contiguous
   bool is_contiguous_ : 1;
   // gcc doesn't like enum class bitfields; see
@@ -2069,6 +2075,8 @@ struct C10_API TensorImpl : public c10::intrusive_ptr_target {
     is_wrapped_number_ = false;
     allow_tensor_metadata_change_ = true;
     reserved_ = false;
+
+    swapped_out_ = false;
   }
 
   // Tensor is stored in the channels last 2d memory format, when dimensions
@@ -2179,9 +2187,9 @@ struct C10_API TensorImpl : public c10::intrusive_ptr_target {
 //    data type, device, is_contiguous, storage_access_should_throw_, bitfields
 //    DispatchKeySet
 //
-static_assert(
-    sizeof(void*) != sizeof(int64_t) || // if 64-bit...
-        sizeof(TensorImpl) == sizeof(int64_t) * 23,
-    "You changed the size of TensorImpl on 64-bit arch."
-    "See Note [TensorImpl size constraints] on how to proceed.");
+// static_assert(
+//     sizeof(void*) != sizeof(int64_t) || // if 64-bit...
+//         sizeof(TensorImpl) == sizeof(int64_t) * 23,
+//     "You changed the size of TensorImpl on 64-bit arch."
+//     "See Note [TensorImpl size constraints] on how to proceed.");
 } // namespace c10

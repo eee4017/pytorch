@@ -36,6 +36,7 @@ endforeach()
 
 set(ATen_CUDA_SRCS ${ATen_CUDA_SRCS}
   ${CMAKE_CURRENT_SOURCE_DIR}/THCCachingHostAllocator.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/THCPinnedMemoryCachingAllocator.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/THCGeneral.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/THCStorageCopy.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/THCTensor.cpp

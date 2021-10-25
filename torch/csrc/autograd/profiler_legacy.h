@@ -28,6 +28,7 @@ typedef std::shared_ptr<CUevent_st> CUDAEventStub;
 struct CUstream_st;
 typedef std::shared_ptr<CUstream_st> CUDAStreamStub;
 
+
 namespace torch { namespace autograd {
 
 struct Node;
@@ -54,7 +55,7 @@ struct TORCH_API CUDAStubs {
   virtual bool enabled() const {
     return false;
   }
-  virtual void insertHostFunction(std::function<void(void*)> host, void* data)
+  virtual void insertHostFunction(std::function<void(void*)> host, void* data, CUDAStreamStub stream)
       const {
     fail();
   }
@@ -75,12 +76,24 @@ struct TORCH_API CUDAStubs {
     return nullptr;
   }
 
-  virtual void issueStreamWaitEvent(CUDAEventStub event, CUDAStreamStub stream)
-      const {
+ virtual void eventSynchronize(CUDAEventStub event) const {
     fail();
   }
 
-  virtual CUDAStreamStub createStream() const {
+  virtual void streamWaitEvent(CUDAEventStub event, CUDAStreamStub stream) const {
+    fail();
+  }
+
+  virtual void memcpyAsync(void* dst, const void* src, size_t count, int kind, CUDAStreamStub stream) const {
+    fail();
+  }
+
+  virtual CUDAStreamStub getComputeStream() const  {
+    fail();
+    return nullptr;
+  }
+
+  virtual CUDAStreamStub streamCreate() const {
     fail();
     return nullptr;
   }
