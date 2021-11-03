@@ -92,6 +92,7 @@ core_sources_common = [
     "torch/csrc/autograd/profiler_legacy.cpp",
     "torch/csrc/autograd/profiler_kineto.cpp",
     "torch/csrc/autograd/command_dispatcher.cpp",
+    "torch/csrc/autograd/concurrent_prefetcher.cpp",
     "torch/csrc/autograd/offloader.cpp",
     "torch/csrc/autograd/naive_offloader.cpp",
     "torch/csrc/autograd/scheduled_offloader.cpp",

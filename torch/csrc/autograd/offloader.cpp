@@ -23,8 +23,8 @@ void deleteCallback(void* the_) {
   delete the;
 }
 
+std::mutex offloadMutex;
 std::map<const void*, CUDAEventStub> offloadFinishEvent;
-std::set<c10::StorageImpl*> offloadStorages;
 
 void copyBytesCallBack(
     size_t nbytes,
@@ -34,15 +34,20 @@ void copyBytesCallBack(
     c10::Device dst_device) {
   if (src_device.type() == c10::DeviceType::CPU &&
       dst_device.type() == c10::DeviceType::CUDA) {
+    offloadMutex.lock();
     auto it = offloadFinishEvent.find(src);
+    offloadMutex.unlock();
+
     if (it == offloadFinishEvent.end()) {
       std::cerr << "Cannot find this tensor in offload tensors.\n";
     } else {
       cudaStubs()->streamWaitEvent(it->second, prefetch_stream);
-      std::cerr << "Prefetch " << dst << " event " << it->second.get() << "\n";
       cudaStubs()->memcpyAsync(
           dst, src, nbytes, cudaMemcpyHostToDevice, prefetch_stream);
+
+      offloadMutex.lock();
       offloadFinishEvent.erase(it);
+      offloadMutex.unlock();
     }
 
   } else if (
@@ -51,9 +56,22 @@ void copyBytesCallBack(
     cudaStubs()->memcpyAsync(
         dst, src, nbytes, cudaMemcpyDeviceToHost, offload_stream);
     auto event = cudaStubs()->registerStreamEvent(offload_stream);
-    std::cerr << "Offload " << dst << " event " << event.get() << "\n";
+
+    offloadMutex.lock();
     offloadFinishEvent.insert(make_pair(dst, event));
+    offloadMutex.unlock();
   }
+}
+
+Offloader::Offloader() {
+}
+
+Offloader::~Offloader() {
+  std::cerr << "offloadFinishEvent.size() = " << offloadFinishEvent.size()
+            << "\n";
+  offloadFinishEvent.clear();
+
+  std::cerr << "comandDispatcherFinalizer joined\n";
 }
 
 void Offloader::prefetch(const at::RecordFunction& fn, int kidx) {
@@ -73,9 +91,10 @@ void Offloader::prefetch(const at::RecordFunction& fn, int kidx) {
 
       offloadStorages.erase(storage_impl_);
 
-      // std::cerr << "Prefetch " << original_data_ptr << " to "
-      //           << tensor.data_ptr() << " " << tensor.storage().device()
-      //           << " size=" << tensor.storage().nbytes() << "\n";
+      std::cerr << "[" << kidx << "]"
+                << "Prefetch " << original_data_ptr << " to "
+                << tensor.data_ptr() << " " << tensor.storage().device()
+                << " size=" << tensor.storage().nbytes() << "\n";
     }
   };
 

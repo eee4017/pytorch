@@ -1,4 +1,5 @@
 #include <torch/csrc/autograd/profiler_legacy.h>
+#include <torch/csrc/autograd/concurrent_queue.h>
 
 #include <map>
 #include <queue>
@@ -9,7 +10,6 @@ namespace profiler {
 
 #define MEMORY_BLOCK_SIZE_THRESHOLD 1e4
 
-
 extern CUDAStreamStub compute_stream;
 extern CUDAStreamStub offload_stream;
 extern CUDAStreamStub prefetch_stream;
@@ -19,9 +19,17 @@ struct DeleteTensorInfo {
   at::DataPtr old_ptr;
 };
 
+
+struct KernelDependencies {
+  std::vector<c10::StorageImpl*> prefetch_blocks;
+  int kidx;
+
+  KernelDependencies(int kidx) : kidx(kidx) {}
+};
+
+
 void comandDispatcherInitializer();
 void comandDispatcherFinalizer();
-
 
 void deleteCallback(void* the_);
 void copyBytesCallBack(
@@ -30,12 +38,24 @@ void copyBytesCallBack(
     c10::Device src_device,
     void* dst,
     c10::Device dst_device);
+
+extern std::mutex offloadMutex;
+extern std::map<const void*, CUDAEventStub> offloadFinishEvent;
+
 class Offloader {
  public:
   virtual void prefetch(const at::RecordFunction& fn, int kidx);
   virtual void offload(const at::RecordFunction& fn, int kidx) = 0;
+  Offloader();
+  ~Offloader();
+
+ protected:
+  void prefetchThread();
+  std::set<c10::StorageImpl*> offloadStorages;
 
  private:
+  std::thread prefetch_thread;
+  ConcurrentQueue<KernelDependencies> prefetch_command_queue;
 };
 
 class NaiveOffloader : public Offloader {
@@ -60,8 +80,6 @@ class ScheduledOffloader : public Offloader {
 struct CommandDispatcherObserverContext : public at::ObserverContext {
   bool need_offload;
 };
-
-
 
 } // namespace profiler
 } // namespace autograd

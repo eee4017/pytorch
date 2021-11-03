@@ -318,8 +318,6 @@ class PinnedMemoryCachingAllocator {
   Block* malloc(int device, size_t size, cudaStream_t stream) {
     std::unique_lock<std::recursive_mutex> lock(mutex);
 
-    std::cerr << "PinnedMemoryCachingAllocator malloc " << size << "\n";
-
     if (C10_LIKELY(captures_underway == 0)) {
       // Processes end-of-life events for outstanding allocations used on
       // multiple streams (checks if their GPU-side uses are complete and

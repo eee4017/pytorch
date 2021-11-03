@@ -45,16 +45,6 @@ void exportDependencies(const at::RecordFunction& fn, int kidx) {
   dependencies_ofs << std::endl;
 }
 
-void comandDispatcherFinalizer() {
-  std::cerr << "offloadFinishEvent.size() = " << offloadFinishEvent.size() << "\n";
-
-  offloadFinishEvent.clear();
-  dependencies_ofs.close();
-  std::cerr << "comandDispatcherFinalizer joined\n";
-  cudaStubs()->synchronize();
-  return;
-}
-
 int kidx = 0;
 int step = 0;
 int depth = 0;
@@ -69,6 +59,14 @@ enum CommandDispatcherStatus {
   CommandDispatcherScheduledOffloader,
 };
 Offloader* offloader;
+
+void comandDispatcherFinalizer() {
+  dependencies_ofs.close();
+
+  delete offloader;
+  cudaStubs()->synchronize();
+  return;
+}
 
 const int SCHEDULER_MAX_STEP = 10;
 

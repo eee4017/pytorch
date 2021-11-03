@@ -8,7 +8,8 @@ namespace profiler {
 void ScheduledOffloader::parseSchedulerResults() {
   std::ifstream ifs("/root/share/scheduling_results.txt");
 
-  std::cerr << "start to parse scheduler results from /root/share/scheduling_results.txt\n";
+  std::cerr
+      << "start to parse scheduler results from /root/share/scheduling_results.txt\n";
   std::string line;
   while (getline(ifs, line)) {
     std::stringstream ss;
@@ -55,11 +56,10 @@ void ScheduledOffloader::offload(const at::RecordFunction& fn, int kidx) {
           deleteCallback, (void*)old, offload_stream);
       offloadStorages.insert(storage_impl_);
 
-      // std::cerr << "Offload " << original_data_ptr << " to "
-      //           << tensor.data_ptr() << " " << tensor.storage().device()
-      //           << " size=" << tensor.storage().nbytes()
-      //           << " scheduling_results_size="
-      //           << scheduling_results_size[kidx][tidx] << "\n";
+      std::cerr << "[" << kidx << "]"
+                << "Offload " << original_data_ptr << " to "
+                << tensor.data_ptr() << " " << tensor.storage().device()
+                << " size=" << tensor.storage().nbytes() << "\n";
     };
   };
 
@@ -73,7 +73,6 @@ void ScheduledOffloader::offload(const at::RecordFunction& fn, int kidx) {
       swap_out(tensor, i);
     }
   }
-
 }
 
 } // namespace profiler
