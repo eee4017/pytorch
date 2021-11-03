@@ -108,7 +108,7 @@ struct KinetoThreadLocalState : public ProfilerThreadLocalState {
 
   // TODO: use kineto
   void reportMemoryUsage(
-      void* /* unused */,
+      void* ptr/* unused */,
       int64_t alloc_size,
       c10::Device device) override {
     if (config_.profile_memory && config_.state != ProfilerState::Disabled) {

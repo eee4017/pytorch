@@ -30,7 +30,7 @@ at::DataPtr StorageImpl::swap_out(
   original_allocator_ = allocator_;
   allocator_ = allocator;
 
-  std::cerr << "StorageImpl::swap_out to " << data_ptr.device() << "\n";
+  // std::cerr << "StorageImpl::swap_out to " << data_ptr.device() << "\n";
   return (std::move(old_data_ptr));
 }
 
@@ -55,7 +55,7 @@ at::DataPtr StorageImpl::swap_in() {
   original_allocator_ = allocator_;
   allocator_ = allocator;
 
-  std::cerr << "StorageImpl::swap_in to " << data_ptr.device() << "\n";
+  // std::cerr << "StorageImpl::swap_in to " << data_ptr.device() << "\n";
   return (std::move(old_data_ptr));
 }
 

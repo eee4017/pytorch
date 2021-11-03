@@ -20,6 +20,7 @@
 #include <vector>
 #include <iostream>
 #include <chrono>
+#include <fstream>
 
 namespace c10 {
 
@@ -86,7 +87,19 @@ namespace CUDACachingAllocator {
  * notifyCaptureDestroy.
  */
 
+std::vector<std::pair<int, int64_t>> memory_usage_log;
+__attribute__((destructor))
+void exportMemoryUsage(){
+  std::ofstream ofs("/tmp/memory_usage.txt");
+  for(auto p: memory_usage_log){
+    ofs << p.first << " " << p.second << "\n";
+  }
+  ofs.close();
+}
+
 namespace {
+
+
 
 using stream_set = std::unordered_set<cuda::CUDAStream>;
 
@@ -505,8 +518,10 @@ class DeviceCachingAllocator {
     bool inserted = active_blocks.insert(block).second;
     TORCH_INTERNAL_ASSERT_DEBUG_ONLY(inserted);
 
-    // time_t curr_time = std::chrono::system_clock::now().time_since_epoch().count();
+    time_t curr_time = std::chrono::system_clock::now().time_since_epoch().count();
     // std::cerr << "reportMemoryUsageToProfiler " << block->size << " " << curr_time << "\n";
+    memory_usage_log.push_back(std::make_pair(block->size, curr_time));
+
     c10::reportMemoryUsageToProfiler(
         block, block->size, c10::Device(c10::DeviceType::CUDA, device));
 
@@ -523,7 +538,8 @@ class DeviceCachingAllocator {
 
     block->allocated = false;
 
-    // time_t curr_time = std::chrono::system_clock::now().time_since_epoch().count();
+    time_t curr_time = std::chrono::system_clock::now().time_since_epoch().count();
+    memory_usage_log.push_back(std::make_pair(-((int)block->size), curr_time));
     // std::cerr << "reportMemoryUsageToProfiler " << -((int)block->size) << " " << curr_time  << "\n";
     c10::reportMemoryUsageToProfiler(
         block, -block->size, c10::Device(c10::DeviceType::CUDA, block->device));

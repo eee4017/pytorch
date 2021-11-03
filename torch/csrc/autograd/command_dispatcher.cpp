@@ -1,6 +1,6 @@
-#include <c10/cuda/CUDAGuard.h>
-
 #include <THC/THCCachingHostAllocator.h>
+#include <c10/cuda/CUDACachingAllocator.h>
+#include <c10/cuda/CUDAGuard.h>
 
 #include <torch/csrc/autograd/command_dispatcher.h>
 #include <torch/csrc/jit/frontend/tracer.h>
@@ -15,155 +15,20 @@
 #include <string>
 #include <utility>
 
-#define MEMORY_BLOCK_SIZE_THRESHOLD 1e4
-
 namespace torch {
 namespace autograd {
 namespace profiler {
 
-CUDAStreamStub compute_stream;
-CUDAStreamStub offload_stream;
-CUDAStreamStub prefetch_stream;
-
-std::map<const void*, CUDAEventStub> offloadTensors;
-
-void copyBytesCallBack(
-    size_t nbytes,
-    const void* src,
-    c10::Device src_device,
-    void* dst,
-    c10::Device dst_device) {
-  if (src_device.type() == c10::DeviceType::CPU &&
-      dst_device.type() == c10::DeviceType::CUDA) {
-    auto it = offloadTensors.find(src);
-    if (it == offloadTensors.end()) {
-      std::cerr << "Cannot find this tensor in offload tensors.\n";
-    } else {
-      cudaStubs()->streamWaitEvent(it->second, prefetch_stream);
-      cudaStubs()->memcpyAsync(
-          dst, src, nbytes, cudaMemcpyHostToDevice, prefetch_stream);
-      offloadTensors.erase(it);
-    }
-
-  } else if (
-      src_device.type() == c10::DeviceType::CUDA &&
-      dst_device.type() == c10::DeviceType::CPU) {
-    cudaStubs()->memcpyAsync(
-        dst, src, nbytes, cudaMemcpyDeviceToHost, offload_stream);
-    auto event = cudaStubs()->registerStreamEvent(offload_stream);
-    offloadTensors.insert(make_pair(dst, event));
-  }
-}
-
-struct DeleteTensorInfo {
-  at::DataPtr old_ptr;
-};
-
-void deleteCallback(void* the_) {
-  DeleteTensorInfo* the = static_cast<DeleteTensorInfo*>(the_);
-
-  if (the->old_ptr) {
-    auto target = std::move(the->old_ptr);
-  } else {
-    std::cerr << "Try to delete nullptr \n";
-  }
-  delete the;
-}
-
-void prefetch(const at::RecordFunction& fn) {
-  int swap_in_tensor_count = 0;
-
-  auto swap_in = [&](at::Tensor& tensor) {
-    auto original_data_ptr = tensor.data_ptr();
-    auto storage_impl_ = tensor.storage().unsafeGetStorageImpl();
-
-    if (storage_impl_->is_swapped_out_) {
-      swap_in_tensor_count += 1;
-
-      DeleteTensorInfo* old = new DeleteTensorInfo();
-      old->old_ptr = std::move(storage_impl_->swap_in());
-      cudaStubs()->insertHostFunction(
-          deleteCallback, (void*)old, prefetch_stream);
-
-      std::cerr << "Prefetch " << original_data_ptr << " to "
-                << tensor.data_ptr() << " " << tensor.storage().device()
-                << " size=" << tensor.storage().nbytes() << "\n";
-    }
-  };
-
-  auto inputs = fn.inputs();
-  for (int i = 0; i < inputs.size(); i++) {
-    // std::cerr << "Inputs " << inputs[i].type()->annotation_str() << "\n";
-    if (inputs[i].isTensor()) {
-      at::Tensor& tensor = inputs[i].toTensor();
-      if (tensor.defined() && tensor.has_storage()) {
-        swap_in(tensor);
-      }
-    } else if (inputs[i].isTensorList()) {
-      c10::List<at::Tensor>&& tensorList = inputs[i].toTensorList();
-      for (at::Tensor tensor : tensorList) {
-        if (tensor.defined() && tensor.has_storage()) {
-          swap_in(tensor);
-        }
-      }
-    }
-  }
-
-  auto outputs = fn.outputs();
-  // std::cerr << "Outputs " << outputs.size() << "\n";
-  for (int i = 0; i < outputs.size(); i++) {
-    if (!outputs[i].isTensor())
-      continue;
-
-    at::Tensor& tensor = outputs[i].toTensor();
-    if (tensor.defined() && tensor.has_storage()) {
-      swap_in(tensor);
-    }
-  }
-
-  if (swap_in_tensor_count > 0) {
-    std::cerr << "Compute Wait for prefetch stream " << fn.name() << "\n";
-    auto prefetch_finish_event =
-        cudaStubs()->registerStreamEvent(prefetch_stream);
-    cudaStubs()->streamWaitEvent(prefetch_finish_event, compute_stream);
-  }
-}
-
-std::vector<std::string> scheduling_name;
-std::vector<std::vector<int>> scheduling_results;
-std::vector<std::vector<int>> scheduling_results_size;
-
-void parseSchedulerResults() {
-  std::ifstream ifs("/root/share/scheduling_results.txt");
-
-  std::string line;
-  while (getline(ifs, line)) {
-    scheduling_results.push_back(std::vector<int>());
-    scheduling_results_size.push_back(std::vector<int>());
-    std::stringstream ss;
-    ss << line;
-    std::string name;
-    ss >> name;
-    scheduling_name.push_back(name);
-    std::string sch;
-    while (ss >> sch) {
-      scheduling_results.back().push_back(sch[0] - '0');
-      scheduling_results_size.back().push_back(
-          std::stoi(sch.substr(2, sch.length())));
-    }
-  }
-}
-
 std::ofstream dependencies_ofs;
-void exportDependencies(const at::RecordFunction& fn) {
-  dependencies_ofs << fn.name();
+void exportDependencies(const at::RecordFunction& fn, int kidx) {
+  dependencies_ofs << kidx << "|" << fn.name();
   for (auto i : fn.inputs()) {
     if (!i.isTensor())
       continue;
     at::Tensor& tensor = i.toTensor();
     if (tensor.defined() && tensor.has_storage() &&
         tensor.storage().nbytes() > 0) {
-      dependencies_ofs << "|" << tensor.data_ptr() << " "
+      dependencies_ofs << "|" << tensor.storage().unsafeGetStorageImpl() << " "
                        << tensor.storage().nbytes();
     }
   }
@@ -173,131 +38,178 @@ void exportDependencies(const at::RecordFunction& fn) {
     at::Tensor& tensor = i.toTensor();
     if (tensor.defined() && tensor.has_storage() &&
         tensor.storage().nbytes() > 0) {
-      dependencies_ofs << "|" << tensor.data_ptr() << " "
+      dependencies_ofs << "|" << tensor.storage().unsafeGetStorageImpl() << " "
                        << tensor.storage().nbytes();
     }
   }
-  dependencies_ofs << "\n";
+  dependencies_ofs << std::endl;
+}
+
+void comandDispatcherFinalizer() {
+  std::cerr << "offloadFinishEvent.size() = " << offloadFinishEvent.size() << "\n";
+
+  offloadFinishEvent.clear();
+  dependencies_ofs.close();
+  std::cerr << "comandDispatcherFinalizer joined\n";
+  cudaStubs()->synchronize();
+  return;
 }
 
 int kidx = 0;
-
-void offload(const at::RecordFunction& fn) {
-  int swap_out_tensor_count = 0;
-
-  auto swap_out = [&](at::Tensor& tensor, int tidx) {
-    auto original_data_ptr = tensor.data_ptr();
-
-    auto storage_impl_ = tensor.storage().unsafeGetStorageImpl();
-    if (!storage_impl_->is_swapped_out_ &&
-        tidx < scheduling_results[kidx].size() &&
-        scheduling_results[kidx][tidx] == 1) {
-      swap_out_tensor_count += 1;
-
-      if (swap_out_tensor_count == 1) {
-        auto compute_stream_event = cudaStubs()->registerComputeStreamEvent();
-        cudaStubs()->streamWaitEvent(compute_stream_event, offload_stream);
-      }
-
-      DeleteTensorInfo* old = new DeleteTensorInfo();
-      old->old_ptr = std::move(storage_impl_->swap_out(
-          c10::Device(c10::DeviceType::CPU, 0), copyBytesCallBack));
-      cudaStubs()->insertHostFunction(
-          deleteCallback, (void*)old, offload_stream);
-
-      std::cerr << "Offload " << original_data_ptr << " to "
-                << tensor.data_ptr() << " " << tensor.storage().device()
-                << " size=" << tensor.storage().nbytes()
-                << " scheduling_results_size="
-                << scheduling_results_size[kidx][tidx] << "\n";
-    };
-  };
-
-  auto inputs = fn.inputs();
-  for (int i = 0; i < inputs.size(); i++) {
-    if (!inputs[i].isTensor())
-      continue;
-    at::Tensor& tensor = inputs[i].toTensor();
-    if (tensor.defined() && tensor.has_storage() &&
-        tensor.storage().nbytes() > MEMORY_BLOCK_SIZE_THRESHOLD) {
-      swap_out(tensor, i);
-    }
-  }
-
-  std::cerr << "Kernel " << scheduling_name[kidx] << " == " << fn.name()
-            << "\n";
-  kidx += 1;
-}
-
 int step = 0;
 int depth = 0;
 int in_backward = 0;
 int in_optimizer = 0;
 
-void comandDispatcherFinalizer() {
-  std::cerr << "comandDispatcherInitializer\n";
-  std::cerr << "offloadTensors.size() = " << offloadTensors.size() << "\n";
-  offloadTensors.clear();
+enum CommandDispatcherFunctionScope { Forward, Backward, Optimization };
+CommandDispatcherFunctionScope scope;
 
-  std::cerr << "comandDispatcherFinalizer joined\n";
-  return;
+enum CommandDispatcherStatus {
+  CommandDispatcherNaiveOffloader,
+  CommandDispatcherScheduledOffloader,
+};
+Offloader* offloader;
+
+const int SCHEDULER_MAX_STEP = 10;
+
+size_t preallocate_swap_space_size = 0;
+int scheduler_enable_step[SCHEDULER_MAX_STEP] = {0};
+int dependency_enable_step[SCHEDULER_MAX_STEP] = {0};
+CommandDispatcherStatus status;
+void getConfigFromEnviron() {
+  auto parse_comma_split = [](const char* tmp, int* table) {
+    if (tmp) {
+      std::stringstream ss(tmp);
+      while (ss.good()) {
+        std::string substr;
+        getline(ss, substr, ',');
+
+        int index = stoi(substr);
+        if (0 <= index && index < SCHEDULER_MAX_STEP) {
+          table[index] = 1;
+        }
+      }
+    }
+  };
+
+  char* tmp;
+  parse_comma_split(getenv("SCHEDULER_ENABLE_STEP"), scheduler_enable_step);
+  parse_comma_split(getenv("DEPENDECY_ENABLE_STEP"), dependency_enable_step);
+
+  tmp = getenv("SCHEDULER");
+  std::string scheduler_str = "scheduled";
+  if (tmp) {
+    scheduler_str = std::string(tmp);
+    if (scheduler_str.compare("naive") == 0) {
+      status = CommandDispatcherStatus::CommandDispatcherNaiveOffloader;
+    } else {
+      status = CommandDispatcherStatus::CommandDispatcherScheduledOffloader;
+    }
+  }
+
+  tmp = getenv("PREALLOCATE_SWAP_SPACE");
+  if(tmp){
+    preallocate_swap_space_size = atoll(tmp);
+  } else {
+    preallocate_swap_space_size = 3 * 1e9;
+  }
+
+  std::cerr << "======= Command Dispatcher =======\nSCHEDULER = " << scheduler_str << "\n";
+  std::cerr << "PREALLOCATE_SWAP_SPACE = " << preallocate_swap_space_size << "\n";
+  std::cerr << "SCHEDULER_ENABLE_STEP = ";
+  for (int i = 0; i < SCHEDULER_MAX_STEP; i++) {
+    std::cerr << scheduler_enable_step[i] << " ";
+  }
+  std::cerr << "\n";
+
+  std::cerr << "DEPENDENCY_ENABLE_STEP = ";
+  for (int i = 0; i < SCHEDULER_MAX_STEP; i++) {
+    std::cerr << dependency_enable_step[i] << " ";
+  }
+  std::cerr << "\n";
+  std::cerr << "======= Command Dispatcher =======\n";
 }
 
-void comandDispatcherInitializer() {  
+CUDAStreamStub compute_stream;
+CUDAStreamStub offload_stream;
+CUDAStreamStub prefetch_stream;
+
+void comandDispatcherInitializer() {
   compute_stream = cudaStubs()->getComputeStream();
   offload_stream = cudaStubs()->streamCreate();
   prefetch_stream = cudaStubs()->streamCreate();
+  getConfigFromEnviron();
 
-  std::cerr << "comandDispatcherInitializer\n";
-  parseSchedulerResults();
-  dependencies_ofs.open("/root/share/dependencies.txt");
+  dependencies_ofs.open(
+      "/root/share/dependencies.txt", std::ofstream::out | std::ofstream::app);
+  if (status == CommandDispatcherStatus::CommandDispatcherScheduledOffloader) {
+    offloader = new ScheduledOffloader();
+  } else {
+    offloader = new NaiveOffloader();
+  }
 
-  at::Allocator *pinned_memory_allocator = getTHCCachingHostAllocator();
-  c10::DataPtr swap_space = pinned_memory_allocator->allocate(1e9);
+  at::Allocator* pinned_memory_allocator = getTHCCachingHostAllocator();
+  c10::DataPtr swap_space = pinned_memory_allocator->allocate(preallocate_swap_space_size);
   swap_space.clear();
 
-
+  scope = CommandDispatcherFunctionScope::Forward;
+  kidx = 0;
   auto handle = at::addGlobalCallback(
       at::RecordFunctionCallback(
           [](const at::RecordFunction& fn)
               -> std::unique_ptr<at::ObserverContext> {
-            at::RecordScope scope = fn.scope();
+            kidx += 1;
             depth += 1;
-            if (fn.scope() == at::RecordScope::BACKWARD_FUNCTION)
-              in_backward = 1;
-            auto fn_name = std::string(fn.name().str());
-            if (fn_name.find("Optimizer") != std::string::npos) {
-              in_optimizer = 1;
+            if (fn.scope() == at::RecordScope::BACKWARD_FUNCTION) {
+              scope = CommandDispatcherFunctionScope::Backward;
             }
-            int need_depth = (in_backward || in_optimizer);
+            auto name = std::string(fn.name().str());
+            if (name.find("Optimizer") != std::string::npos) {
+              scope = CommandDispatcherFunctionScope::Optimization;
+            }
+            if (name.find("ProfilerStep") != std::string::npos) {
+              std::cerr << "ProfilerStep " << step << "\n";
+              scope = CommandDispatcherFunctionScope::Forward;
+              kidx = 0;
+            }
 
             auto ctx_ptr = std::make_unique<CommandDispatcherObserverContext>();
-            if (depth == 2 + need_depth && step == 1)
-              prefetch(fn);
+            ctx_ptr->need_offload = false;
+
+            // function filter logic
+            if (scope == CommandDispatcherFunctionScope::Backward ||
+                scope == CommandDispatcherFunctionScope::Optimization) {
+              if (depth == 3)
+                ctx_ptr->need_offload = true;
+            } else {
+              if (depth == 2)
+                ctx_ptr->need_offload = true;
+            }
+
+            if (ctx_ptr->need_offload) {
+              offloader->prefetch(fn, kidx);
+            }
+
             return ctx_ptr;
           },
-          [](const at::RecordFunction& fn, at::ObserverContext* ctx_ptr) {
-            int need_depth = (in_backward || in_optimizer);
-
-            if (depth == 2 + need_depth) {
-              if (step == 0)
-                exportDependencies(fn);
-
-              if (step == 1)
-                offload(fn);
+          [](const at::RecordFunction& fn, at::ObserverContext* ctx_ptr_) {
+            auto ctx_ptr =
+                dynamic_cast<CommandDispatcherObserverContext*>(ctx_ptr_);
+            // std::cerr << "after " << kidx << " " << depth << " " << scope << " "
+            //           << step << " " << ctx_ptr->need_offload << " "
+            //           << fn.name() << "\n";
+            if (ctx_ptr->need_offload && dependency_enable_step[step]) {
+              exportDependencies(fn, kidx);
             }
+
+            if (ctx_ptr->need_offload && scheduler_enable_step[step]) {
+              offloader->offload(fn, kidx);
+            }
+
             depth -= 1;
-
-            if (fn.scope() == at::RecordScope::BACKWARD_FUNCTION)
-              in_backward = 0;
-            auto fn_name = std::string(fn.name().str());
-            if (fn_name.find("Optimizer") != std::string::npos) {
-              in_optimizer = 0;
-            }
-
-            if (fn_name.find("ProfilerStep") != std::string::npos) {
+            auto name = std::string(fn.name().str());
+            if (name.find("ProfilerStep") != std::string::npos) {
               step += 1;
-              kidx = 0;
             }
           })
           .needsInputs(true)

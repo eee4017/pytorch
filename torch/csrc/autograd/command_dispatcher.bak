@@ -68,8 +68,8 @@ namespace profiler {
 //     {at::RecordScope::KERNEL_FUNCTION_DTYPE, "KERNEL_FUNCTION_DTYPE"},
 //     {at::RecordScope::USER_SCOPE, "USER_SCOPE"}};
 
-std::map<void*, c10::StorageImpl*> offloadTensors;
-// std::set<c10::intrusive_ptr<c10::TensorImpl>> offloadTensors;
+std::map<void*, c10::StorageImpl*> offloadFinishEvent;
+// std::set<c10::intrusive_ptr<c10::TensorImpl>> offloadFinishEvent;
 
 CUDAStreamStub d2h_stream;
 CUDAStreamStub h2d_stream;
@@ -99,10 +99,10 @@ void copyBytesCallBack(
 }
 
 void returnAllTensors() {
-  std::cerr << "returnAllTensors " << offloadTensors.size() << "\n";
-  for (auto ptr : offloadTensors) {
+  std::cerr << "returnAllTensors " << offloadFinishEvent.size() << "\n";
+  for (auto ptr : offloadFinishEvent) {
   }
-  offloadTensors.clear();
+  offloadFinishEvent.clear();
 }
 
 void prefetch(const at::RecordFunction& fn) {
@@ -117,12 +117,12 @@ void prefetch(const at::RecordFunction& fn) {
     if (tensor.defined() && tensor.has_storage() &&
         tensor.storage().nbytes() > 1e6) {
       auto original_data_ptr = tensor.data_ptr();
-      // auto it = offloadTensors.find(tensor.data_ptr());
-      // if (it != offloadTensors.end()) {
+      // auto it = offloadFinishEvent.find(tensor.data_ptr());
+      // if (it != offloadFinishEvent.end()) {
       // auto storage_impl_ = it->second;
       auto storage_impl_ = tensor.storage().unsafeGetStorageImpl();
       storage_impl_->swap_in();
-      // offloadTensors.erase(it);
+      // offloadFinishEvent.erase(it);
 
       // auto tensor_impl_ = tensor.getIntrusivePtr();
       // tensor_impl_->onDemendSwapIn();
@@ -157,7 +157,7 @@ void offload(const at::RecordFunction& fn) {
         auto storage_impl_ = tensor.storage().unsafeGetStorageImpl();
         storage_impl_->swap_out(
             c10::Device(c10::DeviceType::CPU, 0), copyBytesCallBack);
-        // offloadTensors.insert(std::make_pair(tensor.data_ptr(),
+        // offloadFinishEvent.insert(std::make_pair(tensor.data_ptr(),
         // storage_impl_));
 
         // auto tensor_impl_ = tensor.getIntrusivePtr();
@@ -292,10 +292,10 @@ void prefetchThread() {
     if (cmd.kind == (int)cudaMemcpyHostToDevice) {
       std::cerr << "memcpyStreamSynchornizeThread command prefetch\n";
       offloadTensorsMutex.lock();
-      auto it = offloadTensors.find(cmd.src);
+      auto it = offloadFinishEvent.find(cmd.src);
       offloadTensorsMutex.unlock();
 
-      if (it == offloadTensors.end()) {
+      if (it == offloadFinishEvent.end()) {
         std::cerr << "Cannot find this tensor in offload tensors.\n";
       } else {
         cudaStubs()->streamWaitEvent(it->second, prefetch_stream);
@@ -303,7 +303,7 @@ void prefetchThread() {
             cmd.dst, cmd.src, cmd.nbytes, cmd.kind, prefetch_stream);
 
         offloadTensorsMutex.lock();
-        offloadTensors.erase(it);
+        offloadFinishEvent.erase(it);
         offloadTensorsMutex.unlock();
       }
     }
@@ -322,7 +322,7 @@ void offloadThread() {
 
       auto event = cudaStubs()->registerStreamEvent(offload_stream);
       offloadTensorsMutex.lock();
-      offloadTensors.insert(make_pair(cmd.dst, event));
+      offloadFinishEvent.insert(make_pair(cmd.dst, event));
       offloadTensorsMutex.unlock();
     }
   }
