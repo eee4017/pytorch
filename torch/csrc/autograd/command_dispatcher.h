@@ -4,6 +4,8 @@
 #include <map>
 #include <queue>
 
+// #define CONCURRENT_PREFETECHER
+
 namespace torch {
 namespace autograd {
 namespace profiler {
@@ -44,7 +46,7 @@ extern std::map<const void*, CUDAEventStub> offloadFinishEvent;
 
 class Offloader {
  public:
-  virtual void prefetch(const at::RecordFunction& fn, int kidx);
+  void prefetch(const at::RecordFunction& fn, int kidx);
   virtual void offload(const at::RecordFunction& fn, int kidx) = 0;
   Offloader();
   ~Offloader();

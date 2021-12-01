@@ -102,7 +102,7 @@ struct CUDAMethods : public CUDAStubs {
 
   CUDAEventStub registerStreamEvent(CUDAStreamStub stream) const override {
     CUevent_st* cuda_event_ptr;
-    TORCH_CUDA_CHECK(cudaEventCreate(&cuda_event_ptr));
+    TORCH_CUDA_CHECK(cudaEventCreateWithFlags(&cuda_event_ptr, cudaEventDisableTiming));
     TORCH_CUDA_CHECK(cudaEventRecord(cuda_event_ptr, stream.get()));
 
     return std::shared_ptr<CUevent_st>(cuda_event_ptr, [](CUevent_st* ptr) {
@@ -140,10 +140,10 @@ struct CUDAMethods : public CUDAStubs {
     });
   }
 
-  CUDAStreamStub streamCreate() const override {
+  CUDAStreamStub streamCreate(int priority = 0) const override {
     CUstream_st* cuda_stream_ptr;
-    TORCH_CUDA_CHECK(cudaStreamCreateWithFlags(&cuda_stream_ptr, cudaStreamNonBlocking));
-    // TORCH_CUDA_CHECK(cudaStreamCreateWithPriority(&cuda_stream_ptr, cudaStreamNonBlocking, 10));
+    // TORCH_CUDA_CHECK(cudaStreamCreateWithFlags(&cuda_stream_ptr, cudaStreamNonBlocking));
+    TORCH_CUDA_CHECK(cudaStreamCreateWithPriority(&cuda_stream_ptr, cudaStreamNonBlocking, priority));
 
     return std::shared_ptr<CUstream_st>(cuda_stream_ptr, [](CUstream_st* ptr) {
       // TORCH_CUDA_CHECK(cudaStreamDestroy(ptr));

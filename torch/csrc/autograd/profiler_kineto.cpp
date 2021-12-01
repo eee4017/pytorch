@@ -391,6 +391,7 @@ void prepareProfiler(
 
   if (!libkineto::api().isProfilerRegistered()) {
     libkineto_init(/*cpuOnly=*/!at::hasCUDA(), /*logOnError=*/true);
+    // libkineto_init(true, /*logOnError=*/true);
     libkineto::api().suppressLogMessages();
   }
 

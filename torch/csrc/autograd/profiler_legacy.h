@@ -93,7 +93,7 @@ struct TORCH_API CUDAStubs {
     return nullptr;
   }
 
-  virtual CUDAStreamStub streamCreate() const {
+  virtual CUDAStreamStub streamCreate(int priority = 0) const {
     fail();
     return nullptr;
   }

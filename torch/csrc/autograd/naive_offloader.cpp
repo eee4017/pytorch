@@ -23,9 +23,9 @@ void NaiveOffloader::offload(const at::RecordFunction& fn, int kidx) {
 
       DeleteTensorInfo* old = new DeleteTensorInfo();
       old->old_ptr = std::move(storage_impl_->swap_out(
-          c10::Device(c10::DeviceType::CPU, 0), copyBytesCallBack));
-      cudaStubs()->insertHostFunction(
-          deleteCallback, (void*)old, offload_stream);
+          c10::Device(c10::DeviceType::CPU, 0), copyBytesCallBack, offload_stream.get()));
+      // cudaStubs()->insertHostFunction(
+      //     deleteCallback, (void*)old, offload_stream);
       offloadStorages.insert(storage_impl_);
 
       std::cerr << "Offload " << original_data_ptr << " to "

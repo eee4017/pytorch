@@ -2,7 +2,7 @@
 
 #include <c10/core/Allocator.h>
 #include <c10/core/ScalarType.h>
-
+#include <c10/cuda/CUDAStream.h>
 #include <c10/util/intrusive_ptr.h>
 #include <deque>
 
@@ -169,8 +169,8 @@ struct C10_API StorageImpl final : public c10::intrusive_ptr_target {
     return received_cuda_;
   }
   
-  DataPtr swap_out(Device to_device, CopyBytesFunction copyBytesCallback);
-  DataPtr swap_in();
+  DataPtr swap_out(Device to_device, CopyBytesFunction copyBytesCallback, cudaStream_t stream);
+  DataPtr swap_in(cudaStream_t stream);
   void swap_to(Device to_device);
   void release_old_data_ptr();
 

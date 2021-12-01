@@ -14,7 +14,7 @@ void deleteCallback(void* the_) {
   DeleteTensorInfo* the = static_cast<DeleteTensorInfo*>(the_);
   std::cerr << "Delete " << the->old_ptr.device() << " " << the->old_ptr.get()
             << "\n";
-  // BUG: possible call cudaFree in cudaLaunchKernel cause error
+  // BUG: possible call cudaFree in cudaLaunchHost cause error
   if (the->old_ptr) {
     auto to_remove = std::move(the->old_ptr);
   } else {
@@ -41,6 +41,8 @@ void copyBytesCallBack(
     if (it == offloadFinishEvent.end()) {
       std::cerr << "Cannot find this tensor in offload tensors.\n";
     } else {
+      std::cerr << "prefetchStreamWaitOffload " << src
+                << " event=" << it->second.get() << "\n";
       cudaStubs()->streamWaitEvent(it->second, prefetch_stream);
       cudaStubs()->memcpyAsync(
           dst, src, nbytes, cudaMemcpyHostToDevice, prefetch_stream);
@@ -56,15 +58,17 @@ void copyBytesCallBack(
     cudaStubs()->memcpyAsync(
         dst, src, nbytes, cudaMemcpyDeviceToHost, offload_stream);
     auto event = cudaStubs()->registerStreamEvent(offload_stream);
-
+    std::cerr << "offloadFinishEvent " << dst << " event=" << event.get()
+              << "\n";
+              
     offloadMutex.lock();
     offloadFinishEvent.insert(make_pair(dst, event));
     offloadMutex.unlock();
   }
 }
 
-Offloader::Offloader() {
-}
+#ifndef CONCURRENT_PREFETECHER
+Offloader::Offloader() {}
 
 Offloader::~Offloader() {
   std::cerr << "offloadFinishEvent.size() = " << offloadFinishEvent.size()
@@ -84,17 +88,18 @@ void Offloader::prefetch(const at::RecordFunction& fn, int kidx) {
     if (storage_impl_->is_swapped_out_) {
       swap_in_tensor_count += 1;
 
+      std::cerr << "[" << kidx << "]"
+                << "Prefetch " << original_data_ptr << " to "
+                << tensor.data_ptr() << " " << tensor.storage().device()
+                << " size=" << tensor.storage().nbytes() << " " << fn.name()
+                << "\n";
+
       DeleteTensorInfo* old = new DeleteTensorInfo();
-      old->old_ptr = std::move(storage_impl_->swap_in());
+      old->old_ptr = std::move(storage_impl_->swap_in(prefetch_stream.get()));
       cudaStubs()->insertHostFunction(
           deleteCallback, (void*)old, prefetch_stream);
 
       offloadStorages.erase(storage_impl_);
-
-      std::cerr << "[" << kidx << "]"
-                << "Prefetch " << original_data_ptr << " to "
-                << tensor.data_ptr() << " " << tensor.storage().device()
-                << " size=" << tensor.storage().nbytes() << "\n";
     }
   };
 
@@ -128,12 +133,16 @@ void Offloader::prefetch(const at::RecordFunction& fn, int kidx) {
   }
 
   if (swap_in_tensor_count > 0) {
-    std::cerr << "Compute Wait for prefetch stream " << fn.name() << "\n";
     auto prefetch_finish_event =
         cudaStubs()->registerStreamEvent(prefetch_stream);
     cudaStubs()->streamWaitEvent(prefetch_finish_event, compute_stream);
+    std::cerr << "[" << kidx << "]"
+              << "ComputeStreamWaitPrefetch "
+              << " event=" << prefetch_finish_event.get() << " " << fn.name()
+              << "\n";
   }
 }
+#endif
 
 } // namespace profiler
 } // namespace autograd

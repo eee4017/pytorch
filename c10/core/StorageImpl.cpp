@@ -1,13 +1,15 @@
 #include <ATen/cuda/PinnedMemoryAllocator.h>
 #include <THC/THCCachingHostAllocator.h>
 #include <c10/core/StorageImpl.h>
+#include <c10/cuda/CUDACachingAllocator.h>
 #include <cuda_runtime_api.h>
 #include <iostream>
 namespace c10 {
 
 at::DataPtr StorageImpl::swap_out(
     Device dst_device,
-    CopyBytesFunction copyBytesCallback) {
+    CopyBytesFunction copyBytesCallback,
+    cudaStream_t stream) {
   if (is_swapped_out_) {
     return DataPtr();
   }
@@ -30,18 +32,29 @@ at::DataPtr StorageImpl::swap_out(
   original_allocator_ = allocator_;
   allocator_ = allocator;
 
-  // std::cerr << "StorageImpl::swap_out to " << data_ptr.device() << "\n";
-  return (std::move(old_data_ptr));
+  auto old_data_ptr_raw = old_data_ptr.release_context();
+  // std::cerr << "StorageImpl::swap_out " << size_bytes_ << "\n";
+  c10::cuda::CUDACachingAllocator::raw_delete_with_stream(
+      old_data_ptr_raw, stream);
+
+  return (std::move(DataPtr()));
 }
 
-at::DataPtr StorageImpl::swap_in() {
+at::DataPtr StorageImpl::swap_in(cudaStream_t stream) {
   if (!is_swapped_out_) {
     return DataPtr();
   }
 
   auto old_data_ptr = std::move(data_ptr());
   auto allocator = original_allocator_;
-  auto data_ptr = allocator->allocate(size_bytes_);
+
+  void* r = c10::cuda::CUDACachingAllocator::raw_alloc_with_stream(
+      size_bytes_, stream);
+  c10::DataPtr data_ptr = DataPtr(
+      r,
+      r,
+      &c10::cuda::CUDACachingAllocator::raw_delete,
+      Device(DeviceType::CUDA, 0));
   data_ptr_ = std::move(data_ptr); // GPU PTR
 
   copyBytesCallback_(
@@ -55,7 +68,6 @@ at::DataPtr StorageImpl::swap_in() {
   original_allocator_ = allocator_;
   allocator_ = allocator;
 
-  // std::cerr << "StorageImpl::swap_in to " << data_ptr.device() << "\n";
   return (std::move(old_data_ptr));
 }
 

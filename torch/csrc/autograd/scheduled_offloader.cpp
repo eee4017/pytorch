@@ -47,19 +47,22 @@ void ScheduledOffloader::offload(const at::RecordFunction& fn, int kidx) {
       if (swap_out_tensor_count == 1) {
         auto compute_stream_event = cudaStubs()->registerComputeStreamEvent();
         cudaStubs()->streamWaitEvent(compute_stream_event, offload_stream);
+        std::cerr << "[" << kidx << "]" << "offloadStreamWaitCompute event=" << compute_stream_event.get() << "\n";
       }
-
-      DeleteTensorInfo* old = new DeleteTensorInfo();
-      old->old_ptr = std::move(storage_impl_->swap_out(
-          c10::Device(c10::DeviceType::CPU, 0), copyBytesCallBack));
-      cudaStubs()->insertHostFunction(
-          deleteCallback, (void*)old, offload_stream);
-      offloadStorages.insert(storage_impl_);
 
       std::cerr << "[" << kidx << "]"
                 << "Offload " << original_data_ptr << " to "
                 << tensor.data_ptr() << " " << tensor.storage().device()
-                << " size=" << tensor.storage().nbytes() << "\n";
+                << " size=" << tensor.storage().nbytes()<< " " << fn.name() << "\n";
+
+      DeleteTensorInfo* old = new DeleteTensorInfo();
+      old->old_ptr = std::move(storage_impl_->swap_out(
+          c10::Device(c10::DeviceType::CPU, 0), copyBytesCallBack, offload_stream.get()));
+      // cudaStubs()->insertHostFunction(
+      //     deleteCallback, (void*)old, offload_stream);
+      offloadStorages.insert(storage_impl_);
+
+
     };
   };
 
