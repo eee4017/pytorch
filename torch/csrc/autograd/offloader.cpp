@@ -85,22 +85,23 @@ void Offloader::prefetch(const at::RecordFunction& fn, int kidx) {
     auto original_data_ptr = tensor.data_ptr();
     auto storage_impl_ = tensor.storage().unsafeGetStorageImpl();
 
-    if (storage_impl_->is_swapped_out_) {
-      swap_in_tensor_count += 1;
+    storage_impl_->lms_pin();
+    // if (storage_impl_->is_swapped_out_) {
+    //   swap_in_tensor_count += 1;
 
-      std::cerr << "[" << kidx << "]"
-                << "Prefetch " << original_data_ptr << " to "
-                << tensor.data_ptr() << " " << tensor.storage().device()
-                << " size=" << tensor.storage().nbytes() << " " << fn.name()
-                << "\n";
+    //   std::cerr << "[" << kidx << "]"
+    //             << "Prefetch " << original_data_ptr << " to "
+    //             << tensor.data_ptr() << " " << tensor.storage().device()
+    //             << " size=" << tensor.storage().nbytes() << " " << fn.name()
+    //             << "\n";
 
-      DeleteTensorInfo* old = new DeleteTensorInfo();
-      old->old_ptr = std::move(storage_impl_->swap_in(prefetch_stream.get()));
-      cudaStubs()->insertHostFunction(
-          deleteCallback, (void*)old, prefetch_stream);
+    //   DeleteTensorInfo* old = new DeleteTensorInfo();
+    //   old->old_ptr = std::move(storage_impl_->swap_in(prefetch_stream.get()));
+    //   cudaStubs()->insertHostFunction(
+    //       deleteCallback, (void*)old, prefetch_stream);
 
-      offloadStorages.erase(storage_impl_);
-    }
+    //   offloadStorages.erase(storage_impl_);
+    // }
   };
 
   auto inputs = fn.inputs();

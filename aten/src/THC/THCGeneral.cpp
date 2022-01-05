@@ -48,7 +48,8 @@ void THCudaInit(THCState* state)
   int numDevices = static_cast<int>(c10::cuda::device_count_ensure_non_zero());
   state->numDevices = numDevices;
 
-  c10::cuda::CUDACachingAllocator::init(numDevices);
+  c10::cuda::CUDACachingAllocator::init(numDevices, state->cudaHostAllocator);
+  // c10::cuda::CUDACachingAllocator::init(numDevices);
 
   int device = 0;
   THCudaCheck(cudaGetDevice(&device));

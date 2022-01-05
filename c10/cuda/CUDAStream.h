@@ -223,6 +223,7 @@ TORCH_API CUDAStream getCurrentCUDAStream(DeviceIndex device_index = -1);
  * expect, and reset it back to its original state afterwards).
  */
 TORCH_API void setCurrentCUDAStream(CUDAStream stream);
+TORCH_API CUDAStream getLMSCUDAStream(DeviceIndex device = -1);
 
 C10_API std::ostream& operator<<(std::ostream& stream, const CUDAStream& s);
 

@@ -4,6 +4,7 @@
 #include <c10/core/ScalarType.h>
 #include <c10/cuda/CUDAStream.h>
 #include <c10/util/intrusive_ptr.h>
+#include <c10/core/LargeModelSupport.h>
 #include <deque>
 
 namespace c10 {
@@ -52,7 +53,8 @@ struct C10_API StorageImpl final : public c10::intrusive_ptr_target {
         size_bytes_(size_bytes),
         resizable_(resizable),
         received_cuda_(false),
-        allocator_(allocator) {
+        allocator_(allocator),
+        lms_(allocator ? allocator->AsLmsStorage(this) : nullptr) {
     if (resizable) {
       TORCH_INTERNAL_ASSERT(
           allocator_, "For resizable storage, allocator must be provided");
@@ -79,6 +81,7 @@ struct C10_API StorageImpl final : public c10::intrusive_ptr_target {
   ~StorageImpl() = default;
 
   void reset() {
+    lms_.reset(nullptr);
     data_ptr_.clear();
     size_bytes_ = 0;
   }
@@ -90,10 +93,13 @@ struct C10_API StorageImpl final : public c10::intrusive_ptr_target {
 
   template <typename T>
   inline T* unsafe_data() const {
+    if (lms_enabled()) lms_->ensure_data();
     return static_cast<T*>(this->data_ptr_.get());
   }
 
   void release_resources() override {
+    if (lms_enabled())
+      lms_->release_resources();
     data_ptr_.clear();
   }
 
@@ -111,10 +117,12 @@ struct C10_API StorageImpl final : public c10::intrusive_ptr_target {
   };
 
   at::DataPtr& data_ptr() {
+    if (lms_enabled()) lms_->ensure_data();
     return data_ptr_;
   };
 
   const at::DataPtr& data_ptr() const {
+    if (lms_enabled()) lms_->ensure_data();
     return data_ptr_;
   };
 
@@ -176,6 +184,13 @@ struct C10_API StorageImpl final : public c10::intrusive_ptr_target {
 
   bool is_swapped_out_ = false;
 
+  // Large Model Support
+  bool lms_enabled() const;
+  bool lms_pin();
+  bool lms_unpin();
+  bool lms_reclaimed() const;
+  void lms_copy_reclaimed_data(void* dst, size_t size);
+
  private:
   Allocator* original_allocator_;
   CopyBytesFunction copyBytesCallback_;
@@ -188,5 +203,31 @@ struct C10_API StorageImpl final : public c10::intrusive_ptr_target {
   // local to process cuda memory allocation
   bool received_cuda_;
   Allocator* allocator_;
+
+  std::unique_ptr<LmsStorageImpl> lms_;
+  friend class LmsStorageImpl;  // data_ptr_ access
 };
+
+// StorageImpl accessors for LMS to avoid circular depencencies
+inline const Allocator* LmsStorageImpl::allocator() const {
+  return storage_->allocator();
+}
+
+inline size_t LmsStorageImpl::capacity() const {
+  return storage_->nbytes();
+}
+
+inline Device LmsStorageImpl::device() const {
+  return storage_->device();
+}
+
+inline void* LmsStorageImpl::device_ptr() const {
+  return storage_->data_ptr_.get();
+}
+
+inline at::DataPtr LmsStorageImpl::set_device_ptr(at::DataPtr&& data_ptr) {
+  std::swap(storage_->data_ptr_, data_ptr);
+  return std::move(data_ptr);
+}
+
 } // namespace c10

@@ -71,6 +71,22 @@ at::DataPtr StorageImpl::swap_in(cudaStream_t stream) {
   return (std::move(old_data_ptr));
 }
 
+bool StorageImpl::lms_enabled() const {
+  return lms_.get() != nullptr;
+}
+bool StorageImpl::lms_pin() {
+  return lms_enabled() && lms_->pin();
+}
+bool StorageImpl::lms_unpin() {
+  return lms_->unpin();
+}
+bool StorageImpl::lms_reclaimed() const {
+  return lms_->reclaimed();
+}
+void StorageImpl::lms_copy_reclaimed_data(void* dst, size_t size) {
+  lms_->copy_reclaimed_data(dst, size);
+}
+
 void StorageImpl::release_old_data_ptr() {
   // std::cerr << "Delete data_ptr_queue_.size() = " << data_ptr_queue_.size()
   // << "\n"; if(data_ptr_queue_.size() > 0){
@@ -80,6 +96,8 @@ void StorageImpl::release_old_data_ptr() {
 }
 
 at::DataPtr StorageImpl::set_data_ptr(at::DataPtr&& data_ptr) {
+  if (lms_enabled())
+    lms_->ensure_data();
   if (is_swapped_out_)
     std::cerr << "SET DATAPTR " << __FUNCTION__ << " " << data_ptr.get()
               << "\n";
@@ -96,10 +114,14 @@ void StorageImpl::set_data_ptr_noswap(at::DataPtr&& data_ptr) {
 
 // TODO: Return const ptr eventually if possible
 void* StorageImpl::data() {
+  if (lms_enabled())
+    lms_->ensure_data();
   return data_ptr_.get();
 }
 
 void* StorageImpl::data() const {
+  if (lms_enabled())
+    lms_->ensure_data();
   return data_ptr_.get();
 }
 
@@ -142,6 +164,7 @@ void StorageImpl::UniqueStorageShareExternalPointer(
     void* src,
     size_t size_bytes,
     DeleterFnPtr d) {
+  lms_.reset(nullptr);
   if (is_swapped_out_)
     std::cerr << "SET DATAPTR " << __FUNCTION__ << " " << src << "\n";
   UniqueStorageShareExternalPointer(
@@ -154,6 +177,7 @@ void StorageImpl::UniqueStorageShareExternalPointer(
 void StorageImpl::UniqueStorageShareExternalPointer(
     at::DataPtr&& data_ptr,
     size_t size_bytes) {
+  lms_.reset(nullptr);
   if (is_swapped_out_)
     std::cerr << "SET DATAPTR " << __FUNCTION__ << " " << data_ptr.get()
               << "\n";

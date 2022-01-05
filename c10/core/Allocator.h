@@ -148,6 +148,9 @@ inline bool operator!=(std::nullptr_t, const DataPtr& dp) noexcept {
 // possible, or the raw interface will incorrectly reported as unsupported,
 // when it is actually possible.
 
+struct StorageImpl;
+class LmsStorageImpl;
+
 struct C10_API Allocator {
   virtual ~Allocator() = default;
 
@@ -169,6 +172,9 @@ struct C10_API Allocator {
     auto d = raw_deleter();
     AT_ASSERT(d);
     d(ptr);
+  }
+  virtual LmsStorageImpl* AsLmsStorage(StorageImpl* storage) const {
+    return nullptr;
   }
 };
 

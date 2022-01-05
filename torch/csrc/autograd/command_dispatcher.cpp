@@ -198,14 +198,16 @@ void comandDispatcherInitializer() {
 
   dependencies_ofs.open(
       "/root/share/dependencies.txt", std::ofstream::out | std::ofstream::app);
-  // if (status == CommandDispatcherStatus::CommandDispatcherScheduledOffloader
-  // && step > 1) {
-  //   std::cerr << "use ScheduledOffloader\n";
-  //   offloader = new ScheduledOffloader();
-  // } else {
-  //   std::cerr << "use NaiveOffloader\n";
-  //   offloader = new NaiveOffloader();
-  // }
+  if (status == CommandDispatcherStatus::CommandDispatcherScheduledOffloader
+  && step > 1) {
+    std::cerr << "use ScheduledOffloader\n";
+    offloader = new ScheduledOffloader();
+  } else {
+    std::cerr << "use NaiveOffloader\n";
+    offloader = new NaiveOffloader();
+  }
+
+  c10::cuda::CUDACachingAllocator::setUserEnabledLMS(true);
   // scheduled_offloader = new ScheduledOffloader();
   // naive_offloader = new NaiveOffloader();
 
