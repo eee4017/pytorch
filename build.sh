@@ -1,0 +1,5 @@
+export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
+DEBUG=0 USE_DISTRIBUTED=1 USE_MKLDNN=0 \
+USE_CUDA=1 BUILD_TEST=0 USE_FBGEMM=0 USE_NNPACK=0 \
+USE_QNNPACK=0 USE_XNNPACK=0 \
+    python setup.py install

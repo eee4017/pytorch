@@ -113,6 +113,7 @@ struct TORCH_API LegacyEvent {
       bool record_cuda,
       at::RecordFunctionHandle handle = 0,
       std::vector<std::vector<int64_t>>&& shapes = {},
+      std::vector<int64_t>&& ptrs = {},
       int node_id = -1,
       bool is_async = false)
       : name_(std::move(name)),
@@ -120,6 +121,7 @@ struct TORCH_API LegacyEvent {
         thread_id_(thread_id),
         handle_(handle),
         shapes_(shapes),
+        ptrs_(ptrs),
         node_id_(node_id),
         is_async_(is_async) {
     record(record_cuda);
@@ -194,6 +196,10 @@ struct TORCH_API LegacyEvent {
 
   std::vector<std::vector<int64_t>> shapes() const {
     return shapes_;
+  }
+
+  std::vector<int64_t> ptrs() const {
+    return ptrs_;
   }
 
   double cpuElapsedUs(const LegacyEvent& e) const {
@@ -335,6 +341,7 @@ struct TORCH_API LegacyEvent {
   uint64_t fwd_thread_id_;
   at::RecordFunctionHandle handle_ {0};
   std::vector<std::vector<int64_t>> shapes_;
+  std::vector<int64_t> ptrs_;
   int64_t cpu_memory_usage_ = 0;
   int64_t cuda_memory_usage_ = 0;
   int device_ = -1;
@@ -532,6 +539,7 @@ struct TORCH_API FileLineFunc {
 TORCH_API std::vector<FileLineFunc> prepareCallstack(const std::vector<jit::StackEntry>& cs);
 TORCH_API std::vector<std::string> callstackStr(const std::vector<FileLineFunc>& cs);
 TORCH_API std::vector<std::vector<int64_t>> inputSizes(const at::RecordFunction& fn);
+TORCH_API std::vector<int64_t> inputPtrs(const at::RecordFunction& fn);
 
 struct TORCH_API ProfilerThreadLocalState : public c10::MemoryReportingInfoBase {
   // NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init)
@@ -551,7 +559,8 @@ struct TORCH_API ProfilerThreadLocalState : public c10::MemoryReportingInfoBase 
   void pushRange(
       const at::RecordFunction& fn,
       const bool record_cuda,
-      std::vector<std::vector<int64_t>>&& shapes = {});
+      std::vector<std::vector<int64_t>>&& shapes = {},
+      std::vector<int64_t>&& ptrs = {});
 
   void popRange(const at::RecordFunction& fn, const bool record_cuda);
 

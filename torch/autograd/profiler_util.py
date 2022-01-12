@@ -372,7 +372,7 @@ Kernel = namedtuple('Kernel', ['name', 'device', 'duration'])
 class FunctionEvent(FormattedTimesMixin):
     """Profiling information about a single function."""
     def __init__(
-            self, id, name, thread, start_us, end_us, fwd_thread=None, input_shapes=None,
+            self, id, name, thread, start_us, end_us, fwd_thread=None, input_shapes=None, input_ptrs=None,
             stack=None, scope=0, cpu_memory_usage=0, cuda_memory_usage=0, is_async=False,
             is_remote=False, sequence_nr=-1, node_id=-1, device_type=DeviceType.CPU, device_index=0,
             is_legacy=False, flops=None, trace_name=None):
@@ -388,6 +388,7 @@ class FunctionEvent(FormattedTimesMixin):
         self.cpu_children: List[FunctionEvent] = []
         self.cpu_parent: Optional[FunctionEvent] = None
         self.input_shapes: Tuple[int, ...] = input_shapes
+        self.input_ptrs: List[int] = input_ptrs
         self.stack: List = stack
         self.scope: int = scope
         self.cpu_memory_usage: int = cpu_memory_usage

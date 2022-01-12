@@ -211,7 +211,8 @@ void ProfilerThreadLocalState::setOrAddRemoteProfiledEvents(
 void ProfilerThreadLocalState::pushRange(
     const at::RecordFunction& fn,
     const bool record_cuda,
-    std::vector<std::vector<int64_t>>&& shapes) {
+    std::vector<std::vector<int64_t>>&& shapes, 
+    std::vector<int64_t>&& ptrs) {
   if (config_.state == ProfilerState::Disabled) {
     return;
   }
@@ -226,6 +227,7 @@ void ProfilerThreadLocalState::pushRange(
         record_cuda,
         fn.handle(),
         std::move(shapes),
+        std::move(ptrs),
         at::RecordFunction::getDefaultNodeId(),
         fn.isAsync());
     evt.setSequenceNr(fn.seqNr());
@@ -360,20 +362,54 @@ RangeEventList& ProfilerThreadLocalState::getEventList(int64_t thread_id) {
   return *list_ptr;
 }
 
-std::vector<std::vector<int64_t>> inputSizes(const at::RecordFunction& fn) {
-  std::vector<std::vector<int64_t>> sizes;
-  sizes.reserve(fn.inputs().size());
+std::vector<int64_t> inputPtrs(const at::RecordFunction& fn) {
+  std::vector<int64_t> ptrs;
   for (const c10::IValue& input : fn.inputs()) {
     if (!input.isTensor()) {
-      sizes.emplace_back();
       continue;
     }
     const at::Tensor& tensor = input.toTensor();
-    if (tensor.defined()) {
-      sizes.push_back(input.toTensor().sizes().vec());
-    } else {
-      sizes.emplace_back();
+    if (tensor.defined() && tensor.has_storage() && tensor.storage().nbytes() > 0) {
+      int64_t data_ptr = (int64_t)(tensor.storage().unsafeGetStorageImpl());
+      ptrs.push_back(data_ptr);
+    } 
+  }
+  for (const c10::IValue& output : fn.outputs()) {
+    if (!output.isTensor()) {
+      continue;
     }
+    const at::Tensor& tensor = output.toTensor();
+    if (tensor.defined() && tensor.has_storage() && tensor.storage().nbytes() > 0) {
+      int64_t data_ptr = (int64_t)(tensor.storage().unsafeGetStorageImpl());
+      ptrs.push_back(data_ptr);
+    } 
+  }
+  return ptrs;
+}
+
+
+std::vector<std::vector<int64_t>> inputSizes(const at::RecordFunction& fn) {
+  std::vector<std::vector<int64_t>> sizes;
+  for (const c10::IValue& input : fn.inputs()) {
+    if (!input.isTensor()) {
+      continue;
+    }
+    const at::Tensor& tensor = input.toTensor();
+    if (tensor.defined() && tensor.has_storage() && tensor.storage().nbytes() > 0) {
+      int64_t data_ptr = (int64_t)(tensor.storage().unsafeGetStorageImpl());
+      // sizes.push_back(tensor.sizes().vec());
+      sizes.push_back({tensor.storage().nbytes()});
+    } 
+  }
+  for (const c10::IValue& output : fn.outputs()) {
+    if (!output.isTensor()) {
+      continue;
+    }
+    const at::Tensor& tensor = output.toTensor();
+    if (tensor.defined() && tensor.has_storage() && tensor.storage().nbytes() > 0) {
+      // sizes.push_back(tensor.sizes().vec());
+      sizes.push_back({tensor.storage().nbytes()});
+    } 
   }
   return sizes;
 }
@@ -443,7 +479,8 @@ void pushProfilingCallbacksLegacy() {
 
         if (state_ptr->config().report_input_shapes) {
           auto sizes = inputSizes(fn);
-          state_ptr->pushRange(fn, record_cuda, std::move(sizes));
+          auto ptrs = inputPtrs(fn);
+          state_ptr->pushRange(fn, record_cuda, std::move(sizes), std::move(ptrs));
         } else {
           state_ptr->pushRange(fn, record_cuda);
         }
@@ -463,6 +500,7 @@ void pushProfilingCallbacksLegacy() {
         state_ptr->popRange(fn, record_cuda);
       })
     .needsInputs(state_ptr->config().report_input_shapes)
+    .needsOutputs(true)
     .needsIds(true));
   state_ptr->setCallbackHandle(handle);
 }
