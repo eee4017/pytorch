@@ -160,6 +160,14 @@ PyObject* THPCppFunction_name(PyObject* self, PyObject *noargs) {
   return THPUtils_packString(fn.name());
 }
 
+PyObject* THPCppFunction_kid(PyObject* self, PyObject *noargs) {
+  auto fn = ((THPCppFunction*)self)->cdata;
+  void *node_pointer = static_cast<void *>(fn.get());
+  uint64_t kid = reinterpret_cast<uint64_t>(node_pointer);
+  return THPUtils_packUInt64(kid);
+}
+
+
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays,cppcoreguidelines-avoid-non-const-global-variables,modernize-avoid-c-arrays)
 static struct PyMethodDef default_methods[] = {
   THP_FUNCTION_DEFAULT_METHODS,

@@ -33,7 +33,8 @@ PyObject* CppFunction_pynew(PyTypeObject *type, PyObject *args, PyObject *kwds)
 #define THP_FUNCTION_DEFAULT_METHODS \
   {(char*)"_register_hook_dict", THPCppFunction_register_hook_dict, METH_O, nullptr}, \
   {(char*)"register_hook", THPCppFunction_register_hook, METH_O, nullptr}, \
-  {(char*)"name", THPCppFunction_name, METH_NOARGS, nullptr}
+  {(char*)"name", THPCppFunction_name, METH_NOARGS, nullptr}, \
+  {(char*)"kid", THPCppFunction_kid, METH_NOARGS, nullptr}
 
 #define THP_FUNCTION_DEFAULT_PROPERTIES \
   {(char*)"next_functions", (getter)THPCppFunction_next_functions, nullptr, nullptr, nullptr}, \
@@ -46,6 +47,7 @@ PyObject* THPCppFunction_requires_grad(THPCppFunction* self, void *_unused);
 PyObject* THPCppFunction_register_hook_dict(PyObject* self, PyObject* _var);
 PyObject* THPCppFunction_register_hook(PyObject* self, PyObject* hook);
 PyObject* THPCppFunction_name(PyObject* self, PyObject *noargs);
+PyObject* THPCppFunction_kid(PyObject* self, PyObject *noargs);
 
 PyTypeObject* _initFunctionPyTypeObject(PyTypeObject& type, const char* name,
   PyGetSetDef* function_properties, PyMethodDef* function_methods);

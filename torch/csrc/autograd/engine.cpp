@@ -420,10 +420,11 @@ auto Engine::thread_main(const std::shared_ptr<GraphTask>& graph_task) -> void {
           GraphTaskGuard guard(local_graph_task);
           NodeGuard ndguard(task.fn_);
           {
+            void *node_pointer = static_cast<void *>(task.fn_.get());
             RECORD_FUNCTION(
                 c10::str(
                     "autograd::engine::evaluate_function: ",
-                    task.fn_.get()->name()),
+                    task.fn_.get()->name(), " :", std::to_string(reinterpret_cast<std::uintptr_t>(node_pointer))),
                 std::vector<c10::IValue>());
             evaluate_function(
                 local_graph_task,
