@@ -38,6 +38,7 @@
 
 #include <ATen/core/Tensor.h>
 #include <ATen/FuncTorchTLS.h>
+#include <ATen/record_function.h>
 #include "c10/util/Optional.h"
 #include "c10/core/Stream.h"
 
@@ -994,6 +995,31 @@ static PyObject * THPVariable_tolist(PyObject* self, PyObject* args)
   END_HANDLE_TH_ERRORS
 }
 
+static PyObject * THPVariable_record(PyObject* self, PyObject* args, PyObject* kwargs)
+{
+  HANDLE_TH_ERRORS
+  static PythonArgParser parser({
+    "record(PyObject* message=None, *)"
+  });
+  auto& self_ = THPVariable_Unpack(self);
+  ParsedArgs<1> parsed_args;
+  auto r = parser.parse(self, args, kwargs, parsed_args);
+
+  auto obj = r.pyobject(0);
+  std::string message;
+  if (THPUtils_checkString(obj)) {
+    message = THPUtils_unpackString(obj);
+  } else {
+    throw TypeError("message must be a str");
+  }
+
+  {
+    RECORD_FUNCTION(c10::str(message), std::vector<c10::IValue>());
+  }
+  Py_RETURN_NONE;
+  END_HANDLE_TH_ERRORS
+}
+
 static PyObject * THPVariable_type(PyObject* self, PyObject* args, PyObject* kwargs)
 {
   HANDLE_TH_ERRORS
@@ -1239,6 +1265,7 @@ PyMethodDef variable_methods[] = {
   {"to", castPyCFunctionWithKeywords(THPVariable_to), METH_VARARGS | METH_KEYWORDS, NULL},
   {"tolist", THPVariable_tolist, METH_NOARGS, NULL},
   {"type", castPyCFunctionWithKeywords(THPVariable_type), METH_VARARGS | METH_KEYWORDS, NULL},
+  {"record", castPyCFunctionWithKeywords(THPVariable_record), METH_VARARGS | METH_KEYWORDS, NULL},
   ${py_method_defs}
   {NULL}
 };
