@@ -19,6 +19,7 @@
 #include <regex>
 #include <set>
 #include <vector>
+#include <functional>
 
 namespace c10 {
 
@@ -1357,6 +1358,8 @@ class THCCachingAllocator {
     allocated_blocks[block->ptr] = block;
   }
 
+  CudaAllocatorHookFn alloc_hook = [](void *ptr, int device, size_t size){};
+  CudaAllocatorHookFn delete_hook = [](void *ptr, int device, size_t size){};
  public:
   std::vector<std::unique_ptr<DeviceCachingAllocator>> device_allocator;
 
@@ -1397,6 +1400,7 @@ class THCCachingAllocator {
     Block* block = device_allocator[device]->malloc(device, size, stream);
     add_allocated_block(block);
     *devPtr = (void*)block->ptr;
+    alloc_hook(block->ptr, block->device, block->size);
   }
 
   void free(void* ptr) {
@@ -1407,6 +1411,7 @@ class THCCachingAllocator {
     if (!block) {
       TORCH_CHECK(false, "invalid device pointer: ", ptr);
     }
+    delete_hook(block->ptr, block->device, block->size);
     device_allocator[block->device]->free(block);
   }
 
@@ -1472,9 +1477,22 @@ class THCCachingAllocator {
 
     return result;
   }
+
+  void register_alloc_delete_hook(CudaAllocatorHookFn alloc_hook_, CudaAllocatorHookFn delete_hook_){
+    alloc_hook = alloc_hook_;
+    delete_hook = delete_hook_;
+  }
 };
 
 THCCachingAllocator caching_allocator;
+
+C10_CUDA_API void register_alloc_delete_hook(CudaAllocatorHookFn alloc_hook, CudaAllocatorHookFn delete_hook){
+  caching_allocator.register_alloc_delete_hook(alloc_hook, delete_hook);
+}
+
+C10_CUDA_API void reset_alloc_delete_hook(){
+  caching_allocator.register_alloc_delete_hook([](void *ptr, int device, size_t size){}, [](void *ptr, int device, size_t size){});
+}
 
 // Returns whether to force all allocations to bypass the caching allocator and
 // go straight to cudaMalloc.  This setting is useful when debugging GPU memory

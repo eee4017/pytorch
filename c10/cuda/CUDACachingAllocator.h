@@ -8,6 +8,7 @@
 
 #include <array>
 #include <mutex>
+#include <functional>
 
 namespace c10 {
 
@@ -147,6 +148,11 @@ C10_CUDA_API void notifyCaptureDestroy(int device, MempoolId_t mempool_id);
 C10_CUDA_API std::mutex* getFreeMutex();
 
 C10_CUDA_API std::shared_ptr<void> getIpcDevPtr(std::string handle);
+
+using CudaAllocatorHookFn = std::function<void(void *, int, size_t)>;
+
+C10_CUDA_API void register_alloc_delete_hook(CudaAllocatorHookFn alloc_hook, CudaAllocatorHookFn delete_hook);
+C10_CUDA_API void reset_alloc_delete_hook();
 } // namespace CUDACachingAllocator
 
 } // namespace cuda

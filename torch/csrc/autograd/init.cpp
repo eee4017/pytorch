@@ -16,6 +16,7 @@
 #include <torch/csrc/autograd/function.h>
 #include <torch/csrc/autograd/saved_variable.h>
 #include <torch/csrc/autograd/python_saved_variable_hooks.h>
+#include <torch/csrc/autograd/python_alloc_delete_hook.h>
 #include <torch/csrc/autograd/utils/wrap_outputs.h>
 #include <torch/csrc/autograd/utils/python_arg_parsing.h>
 #include <torch/csrc/autograd/python_mode.h>
@@ -309,6 +310,13 @@ PyObject* THPAutograd_initExtension(PyObject* _unused, PyObject *unused) {
   m.def("_pop_saved_tensors_default_hooks", []() {
     torch::autograd::PyDefaultSavedVariableHooks::pop_hooks();
   });
+  m.def("_register_alloc_delete_hook", [](py::function &alloc_hook, py::function &delete_hook) {
+    torch::autograd::py_alloc_delete_hook.register_hook(alloc_hook, delete_hook);
+  });
+  m.def("_remove_alloc_delete_hook", []() {
+    torch::autograd::py_alloc_delete_hook.remove_hook();
+  });
+
 
   _C_m.def("_register_py_class_for_device", [](const std::string& device, py::object python_type_class) {
     auto cls = python_type_class.ptr();
