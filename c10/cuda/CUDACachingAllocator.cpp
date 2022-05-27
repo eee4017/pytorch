@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <bitset>
 #include <deque>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -19,7 +20,6 @@
 #include <regex>
 #include <set>
 #include <vector>
-#include <functional>
 
 namespace c10 {
 
@@ -306,30 +306,16 @@ struct MempoolIdHash {
   }
 };
 
-cudaError_t cudaMallocMaybeCapturing(void** p, size_t size) {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-  if (at::cuda::currentStreamCaptureStatusMayInitCtx() ==
-      at::cuda::CaptureStatus::None) {
-#endif
-    return cudaMalloc(p, size);
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-  } else {
-    // It's ok to capture cudaMallocs, as long as we never cudaFree those
-    // addresses before replay.
-    // Capturing cudaMalloc behaves nicely: it gives the graph new VA,
-    // but is ignored (won't leakily allocate new memory) in replays.
-    at::cuda::CUDAStreamCaptureModeGuard g{cudaStreamCaptureModeRelaxed};
-    return cudaMalloc(p, size);
-  }
-#endif
-}
-
 } // namespace
 
 class CachingAllocatorConfig {
  public:
   static size_t max_split_size() {
     return instance().m_max_split_size;
+  }
+
+  static bool enable_unified_memory() {
+    return instance().m_enable_unified_memory;
   }
 
  private:
@@ -345,43 +331,83 @@ class CachingAllocatorConfig {
   CachingAllocatorConfig()
       : m_max_split_size(std::numeric_limits<size_t>::max()) {}
   size_t m_max_split_size;
+  bool m_enable_unified_memory = false;
 
   void parseArgs() {
-    const char* val = getenv("PYTORCH_CUDA_ALLOC_CONF");
-    if (val != NULL) {
-      const std::string config(val);
+    {
+      const char* val = getenv("PYTORCH_CUDA_ALLOC_CONF");
+      if (val != NULL) {
+        const std::string config(val);
 
-      std::regex exp("[\\s,]+");
-      std::sregex_token_iterator it(config.begin(), config.end(), exp, -1);
-      std::sregex_token_iterator end;
-      std::vector<std::string> options(it, end);
+        std::regex exp("[\\s,]+");
+        std::sregex_token_iterator it(config.begin(), config.end(), exp, -1);
+        std::sregex_token_iterator end;
+        std::vector<std::string> options(it, end);
 
-      for (auto option : options) {
-        std::regex exp2("[:]+");
-        std::sregex_token_iterator it2(option.begin(), option.end(), exp2, -1);
-        std::sregex_token_iterator end2;
-        std::vector<std::string> kv(it2, end2);
-        if (kv.size() >= 2) {
-          /* Maximum split size in MB.  Limited to large size blocks */
-          if (kv[0].compare("max_split_size_mb") == 0) {
-            size_t val2 = stoi(kv[1]);
-            TORCH_CHECK(
-                val2 > kLargeBuffer / (1024 * 1024),
-                "CachingAllocator option max_split_size_mb too small, must be > ",
-                kLargeBuffer / (1024 * 1024),
-                "");
-            val2 = std::max(val2, kLargeBuffer / (1024 * 1024));
-            val2 = std::min(
-                val2, (std::numeric_limits<size_t>::max() / (1024 * 1024)));
-            m_max_split_size = val2 * 1024 * 1024;
-          } else {
-            TORCH_CHECK(false, "Unrecognized CachingAllocator option: ", kv[0]);
+        for (auto option : options) {
+          std::regex exp2("[:]+");
+          std::sregex_token_iterator it2(
+              option.begin(), option.end(), exp2, -1);
+          std::sregex_token_iterator end2;
+          std::vector<std::string> kv(it2, end2);
+          if (kv.size() >= 2) {
+            /* Maximum split size in MB.  Limited to large size blocks */
+            if (kv[0].compare("max_split_size_mb") == 0) {
+              size_t val2 = stoi(kv[1]);
+              TORCH_CHECK(
+                  val2 > kLargeBuffer / (1024 * 1024),
+                  "CachingAllocator option max_split_size_mb too small, must be > ",
+                  kLargeBuffer / (1024 * 1024),
+                  "");
+              val2 = std::max(val2, kLargeBuffer / (1024 * 1024));
+              val2 = std::min(
+                  val2, (std::numeric_limits<size_t>::max() / (1024 * 1024)));
+              m_max_split_size = val2 * 1024 * 1024;
+            } else {
+              TORCH_CHECK(
+                  false, "Unrecognized CachingAllocator option: ", kv[0]);
+            }
           }
+        }
+      }
+    }
+    {
+      const char* val = getenv("PYTORCH_CUDA_ALLOC_UNIFIED");
+      if (val != NULL) {
+        const std::string config(val);
+        if (config.compare("yes") == 0) {
+          m_enable_unified_memory = true;
+        } else {
+          m_enable_unified_memory = false;
         }
       }
     }
   }
 };
+
+cudaError_t cudaMallocMaybeCapturing(void** p, size_t size) {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  if (at::cuda::currentStreamCaptureStatusMayInitCtx() ==
+      at::cuda::CaptureStatus::None) {
+#endif
+    if (CachingAllocatorConfig::enable_unified_memory())
+      return cudaMallocManaged(p, size);
+    else
+      return cudaMalloc(p, size);
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  } else {
+    // It's ok to capture cudaMallocs, as long as we never cudaFree those
+    // addresses before replay.
+    // Capturing cudaMalloc behaves nicely: it gives the graph new VA,
+    // but is ignored (won't leakily allocate new memory) in replays.
+    at::cuda::CUDAStreamCaptureModeGuard g{cudaStreamCaptureModeRelaxed};
+    if (CachingAllocatorConfig::enable_unified_memory())
+      return cudaMallocManaged(p, size);
+    else
+      return cudaMalloc(p, size);
+  }
+#endif
+}
 
 class DeviceCachingAllocator {
  private:
@@ -1358,8 +1384,9 @@ class THCCachingAllocator {
     allocated_blocks[block->ptr] = block;
   }
 
-  CudaAllocatorHookFn alloc_hook = [](void *ptr, int device, size_t size){};
-  CudaAllocatorHookFn delete_hook = [](void *ptr, int device, size_t size){};
+  CudaAllocatorHookFn alloc_hook = [](void* ptr, int device, size_t size) {};
+  CudaAllocatorHookFn delete_hook = [](void* ptr, int device, size_t size) {};
+
  public:
   std::vector<std::unique_ptr<DeviceCachingAllocator>> device_allocator;
 
@@ -1478,7 +1505,9 @@ class THCCachingAllocator {
     return result;
   }
 
-  void register_alloc_delete_hook(CudaAllocatorHookFn alloc_hook_, CudaAllocatorHookFn delete_hook_){
+  void register_alloc_delete_hook(
+      CudaAllocatorHookFn alloc_hook_,
+      CudaAllocatorHookFn delete_hook_) {
     alloc_hook = alloc_hook_;
     delete_hook = delete_hook_;
   }
@@ -1486,12 +1515,16 @@ class THCCachingAllocator {
 
 THCCachingAllocator caching_allocator;
 
-C10_CUDA_API void register_alloc_delete_hook(CudaAllocatorHookFn alloc_hook, CudaAllocatorHookFn delete_hook){
+C10_CUDA_API void register_alloc_delete_hook(
+    CudaAllocatorHookFn alloc_hook,
+    CudaAllocatorHookFn delete_hook) {
   caching_allocator.register_alloc_delete_hook(alloc_hook, delete_hook);
 }
 
-C10_CUDA_API void reset_alloc_delete_hook(){
-  caching_allocator.register_alloc_delete_hook([](void *ptr, int device, size_t size){}, [](void *ptr, int device, size_t size){});
+C10_CUDA_API void reset_alloc_delete_hook() {
+  caching_allocator.register_alloc_delete_hook(
+      [](void* ptr, int device, size_t size) {},
+      [](void* ptr, int device, size_t size) {});
 }
 
 // Returns whether to force all allocations to bypass the caching allocator and
