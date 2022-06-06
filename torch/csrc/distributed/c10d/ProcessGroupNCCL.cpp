@@ -1065,6 +1065,12 @@ void ProcessGroupNCCL::destroyNCCLComms(const std::string& devNCCLCommMapKey) {
   usedDeviceIdxs_.clear();
 }
 
+at::cuda::CUDAStream ProcessGroupNCCL::getNCCLStream(int device){
+  std::string devicesKey = std::to_string(device);
+  return ncclStreams_[devicesKey][0];
+}
+
+
 std::vector<std::shared_ptr<NCCLComm>>& ProcessGroupNCCL::getNCCLComm(
     const std::string& devicesKey,
     const std::vector<at::Device>& devices,

@@ -1427,9 +1427,13 @@ options :class:`~torch.distributed.ProcessGroupNCCL.Options`).
               py::arg("size"),
               py::arg("timeout") = kProcessGroupDefaultTimeout,
               py::call_guard<py::gil_scoped_release>())
+            .def(
+              "get_nccl_stream", [](const c10::intrusive_ptr<::c10d::ProcessGroupNCCL>& process_group, int device) -> int64_t {
+                    return process_group->getNCCLStream(device).pack();
+              })
           .def_property_readonly(
               "options", &::c10d::ProcessGroupNCCL::getOptions);
-
+    
   intrusive_ptr_class_<::c10d::ProcessGroupNCCL::Options>(
       processGroupNCCL,
       "Options",

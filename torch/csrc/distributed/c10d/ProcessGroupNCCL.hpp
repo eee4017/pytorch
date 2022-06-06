@@ -268,6 +268,9 @@ class TORCH_API ProcessGroupNCCL : public ProcessGroup {
   c10::intrusive_ptr<Options> getOptions() {
     return options_;
   }
+  
+  at::cuda::CUDAStream getNCCLStream(int device);
+
 
   const std::string getBackendName() const override {
       return std::string(NCCL_BACKEND_NAME);
