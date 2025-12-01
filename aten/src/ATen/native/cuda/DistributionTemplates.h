@@ -60,6 +60,7 @@ std::tuple<uint64_t, dim3, dim3> calc_execution_policy(const int64_t total_eleme
   return std::make_tuple(counter_offset, grid, dim_block);
 }
 
+/*
 // grid stride loop kernel for distributions
 template<typename accscalar_t, int unroll_factor, typename dist_t, typename transform_t>
 C10_LAUNCH_BOUNDS_2(block_size_bound, grid_size_bound)
@@ -84,6 +85,48 @@ __global__ void distribution_elementwise_grid_stride_kernel(int64_t numel,
       }
     }
     __syncthreads();
+  }
+}*/
+
+template<typename accscalar_t, int unroll_factor, typename dist_t, typename transform_t>
+C10_LAUNCH_BOUNDS_2(block_size_bound, grid_size_bound)
+__global__ void distribution_elementwise_grid_stride_kernel(
+    int64_t numel,
+    PhiloxCudaState philox_args,
+    const dist_t dist_func,
+    const transform_t transform_func) {
+
+  // Unpack Philox seed/offset from the passed-in state.
+  auto [seed, base_offset] = at::cuda::philox::unpack(philox_args);
+
+  // Standard global thread id & grid stride.
+  const int64_t tid    = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const int64_t stride = static_cast<int64_t>(blockDim.x) * gridDim.x;
+
+  // Walk the tensor in a grid-stride loop.
+  for (int64_t li = tid; li < numel; li += stride) {
+    // Map linear element index -> Philox position
+    // Each curand*_4 call consumes 4 x 32-bit values, so we step by that granularity.
+    const uint64_t group = static_cast<uint64_t>(li / unroll_factor);  // which 4-pack (or 2-pack for double2)
+    const int      lane  = static_cast<int>(li % unroll_factor);       // which lane within the pack
+
+    // Initialize Philox exactly at the element's position.
+    // We use subsequence=0 and an absolute offset derived from 'li',
+    // plus the base offset supplied through PhiloxCudaState.
+    curandStatePhilox4_32_10_t state;
+    curand_init(
+        /*seed=*/seed,
+        /*subsequence=*/0ULL,
+        /*offset=*/base_offset + group * static_cast<uint64_t>(max_generator_offsets_per_curand_call),
+        &state);
+
+    // Draw one vector of randoms at that position and select our lane.
+    // Works for float4/uint4/ulonglong2/double2: all have .x, .y, (.z, .w).
+    auto vec = dist_func(&state);
+    accscalar_t rnd = static_cast<accscalar_t>((&vec.x)[lane]);
+
+    // Let the caller write the value at index 'li'
+    transform_func(li, rnd);
   }
 }
 
@@ -458,6 +501,7 @@ void normal_and_transform(TensorIteratorBase& iter, RNG gen, transform_t transfo
 
 template<typename RNG>
 void normal_kernel(const TensorBase &self, double mean_, double std_, RNG gen) {
+  std::cerr << "normal_kernel(Tensor=" << self.data_ptr() << ", mean=" << mean_ << ",  std=" << std_ << ", gen.seed=" << gen->current_seed() << ", gen.offset=" << gen->get_offset() << ")" << std::endl;
   auto iter = TensorIterator::borrowing_nullary_op(self);
   AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.dtype(), "normal_kernel_cuda", [&] {
     using accscalar_t = at::acc_type<scalar_t, true>;

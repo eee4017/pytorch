@@ -501,6 +501,7 @@ torch_c_binding_in_graph_functions = dict.fromkeys(
         "torch._C._create_object_with_type",
         "torch._C._cuda_attach_out_of_memory_observer",
         "torch._C._cuda_beginAllocateCurrentStreamToPool",
+        "torch._C._cuda_beginAllocateCurrentThreadToPool",
         "torch._C._cuda_canDeviceAccessPeer",
         "torch._C._cuda_changeCurrentAllocator",
         "torch._C._cuda_checkPoolLiveAllocations",

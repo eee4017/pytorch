@@ -10,7 +10,7 @@ from torch.distributed.device_mesh import _get_device_handle, DeviceMesh
 from torch.distributed.tensor._dtensor_spec import DTensorSpec
 from torch.distributed.tensor.placement_types import Shard
 
-
+import sys
 logger = getLogger(__name__)
 
 __all__ = [
@@ -231,6 +231,8 @@ class OffsetBasedRNGTracker(_RNGStateTracker):
         # for now, we just convert back to cpu here to make sure it always works.
         if self._device.type == "hpu":
             self._device_handle.set_rng_ctx("philox")
+        fstate = _PhiloxState(state)
+        print(f"OffsetBasedRNGTracker::_set_device_state: state = {fstate.seed} offset = {fstate.offset}", file=sys.stderr)
         self._device_handle.set_rng_state(state.to("cpu"))
         if self._device.type == "hpu":
             self._device_handle.unset_rng_ctx("philox")
@@ -247,16 +249,23 @@ class OffsetBasedRNGTracker(_RNGStateTracker):
         else:
             state = _PhiloxState(self._get_device_state())
 
+        print(f"OffsetBasedRNGTracker::_distribute_region: seed = {state.seed} offset = {state.offset}", file=sys.stderr)
+
         if self.distribute_region_enabled:
             if self._device.type == "hpu":
                 self._device_handle.set_rng_ctx("philox")
             old_offset = state.offset
+            print(f"OffsetBasedRNGTracker::line 258: seed = {state.seed} offset = {state.offset}", file=sys.stderr)
             self._set_pre_op_offset(state, spec)
+            print(f"OffsetBasedRNGTracker::line 260: seed = {state.seed} offset = {state.offset}", file=sys.stderr)
             with torch.random.fork_rng(
                 devices=[self._device], device_type=self._device.type
             ):
                 assert self._device_handle is not None
+
+                print(f"OffsetBasedRNGTracker::line 267: seed = {state.seed} offset = {state.offset}", file=sys.stderr)
                 self._device_handle.set_rng_state(state.state)
+
                 try:
                     yield  # execute the region code
                 finally:

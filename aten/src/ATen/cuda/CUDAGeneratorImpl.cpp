@@ -114,6 +114,7 @@ void CUDAGeneratorState::increase(uint64_t increment) {
     offset_intragraph_ += increment;
   } else {
     // Checks that the increment is expected outside graph capturing.
+    std::cout << "CUDAGeneratorState::increase: state = " << this << " increment = " << increment << " philox_offset_per_thread (before increase) = " << philox_offset_per_thread_ << std::endl;
     TORCH_CHECK(
         !capturing_,
         "Offset increment outside graph capture encountered unexpectedly.");
@@ -270,6 +271,7 @@ void CUDAGeneratorImpl::set_current_seed(uint64_t seed) {
     state_->seed_ = seed;
     state_->philox_offset_per_thread_ = 0;
     no_reset_rnn_state_.clear();
+    std::cout << "CUDAGeneratorImpl::set_current_seed: state = " << state_.get() << " seed = " << seed << " philox_offset_per_thread (after set) = " << state_->philox_offset_per_thread_ << std::endl;
   } else {
     TORCH_CHECK(state_->seed_ == seed, "CUDAGeneratorImpl::set_current_seed can be called during stream capture only if new seed is the same as the original seed.");
     // no-op case
@@ -407,6 +409,7 @@ void CUDAGeneratorImpl::set_philox_offset_per_thread(uint64_t offset) {
   TORCH_CHECK(offset % 4 == 0, "offset must be a multiple of 4");
   if (C10_LIKELY(at::cuda::currentStreamCaptureStatus() == at::cuda::CaptureStatus::None)) {
     state_->philox_offset_per_thread_ = offset;
+    std::cout << "CUDAGeneratorImpl::set_philox_offset_per_thread: state = " << state_.get() << " offset = " << offset << " philox_offset_per_thread (after set) = " << state_->philox_offset_per_thread_ << std::endl;
   } else {
     state_->offset_intragraph_ = offset;
   }
