@@ -14,6 +14,10 @@ __all__ = [
     "seed",
     "initial_seed",
     "fork_rng",
+    "split",
+    "fold_in",
+    "normal",
+    "uniform",
     "thread_safe_generator",
 ]
 
@@ -22,6 +26,58 @@ if TYPE_CHECKING:
     from torch.utils.data._utils.worker import WorkerInfo
 
 from torch._C import default_generator
+
+
+def key(seed: int, impl: str = "philox", device: torch.device = None) -> torch.Tensor:
+    if impl != "philox":
+        raise NotImplementedError(
+            f"torch.random.key() does not support PRNG impl '{impl}'"
+        )
+
+    # (seed, offset)
+    return torch.tensor([seed, 0], dtype=torch.uint64, device=device)
+
+
+def split(key: torch.Tensor, num_splits: int) -> torch.Tensor:
+    return torch._philox_key_split(key, num_splits)
+
+
+def fold_in(key: torch.Tensor, data: int) -> torch.Tensor:
+    return torch._philox_key_fold_in(key, data)
+
+
+def normal(
+    key: torch.Tensor,
+    shape: tuple[int, ...],
+    *,
+    mean: float = 0.0,
+    std: float = 1.0,
+    dtype: torch.dtype | None = None,
+    device: torch.device | str | None = None,
+) -> torch.Tensor:
+    if dtype is None:
+        dtype = torch.float32
+    if device is None:
+        device = key.device
+    result = torch.empty(shape, dtype=dtype, device=device)
+    return torch._philox_normal_(result, key, mean, std)
+
+
+def uniform(
+    key: torch.Tensor,
+    shape: tuple[int, ...],
+    *,
+    low: float = 0.0,
+    high: float = 1.0,
+    dtype: torch.dtype | None = None,
+    device: torch.device | str | None = None,
+) -> torch.Tensor:
+    if dtype is None:
+        dtype = torch.float32
+    if device is None:
+        device = key.device
+    result = torch.empty(shape, dtype=dtype, device=device)
+    return torch._philox_uniform_(result, key, low, high)
 
 
 def set_rng_state(new_state: torch.Tensor) -> None:
