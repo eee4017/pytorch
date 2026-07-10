@@ -2807,6 +2807,83 @@ torch.cuda.synchronize()
     @unittest.skipIf(
         not TEST_CUDA_GRAPH, "CUDA >= 11.0 or ROCM >= 5.3 required for graphs"
     )
+    @unittest.skipIf(not TEST_MULTIGPU, "requires multiple devices")
+    def test_graph_capture_multidevice_accum_stream_error(self):
+        """A gradient whose device matches neither the producer's nor the
+        consumer's canonical device would be accumulated on that device's
+        current (non-capturing) stream during capture; this must raise a
+        clear error instead of invalidating the capture."""
+
+        class TwoDeviceOut(torch.autograd.Function):
+            # First (cuda:0) output pins the node's canonical stream to
+            # cuda:0; grads for the second output arrive on cuda:1. Views
+            # avoid launching cuda:1 kernels inside the capture.
+            @staticmethod
+            def forward(ctx, x, y1):
+                return x * 2, y1.view_as(y1)
+
+            @staticmethod
+            def backward(ctx, g0, g1):
+                return g0 * 2, None
+
+        class FromDev0(torch.autograd.Function):
+            # Canonical stream also on cuda:0 (first output); backward
+            # returns a pre-saved cuda:1 gradient, so the consumer's cuda:1
+            # buffer position accumulates on that device's current stream
+            # (case C) with capturing producers.
+            @staticmethod
+            def forward(ctx, marker0, y1):
+                ctx.save_for_backward(torch.ones_like(y1))
+                return marker0 * 2, y1.view_as(y1)
+
+            @staticmethod
+            def backward(ctx, gm, gy_unused):
+                (ones,) = ctx.saved_tensors
+                return gm * 2, ones
+
+        # Warmup on a non-default side stream: stale-but-non-default streams
+        # pass through the input-buffer checks, so backward reaches the
+        # accumulation-stream check under capture.
+        warmup_stream = torch.cuda.Stream()
+        with torch.cuda.stream(warmup_stream):
+            x = torch.randn(4, device="cuda:0", requires_grad=True)
+            y1 = torch.randn(4, device="cuda:1")
+
+            def fwd():
+                out0, out1 = TwoDeviceOut.apply(x, y1)
+                m1, _ = FromDev0.apply(out0, out1)
+                m2, _ = FromDev0.apply(out0, out1)
+                return (m1 + m2).sum()
+
+            fwd().backward()
+            x.grad = None
+        torch.cuda.synchronize()
+
+        s = torch.cuda.Stream()
+        with torch.cuda.stream(s):
+            g = torch.cuda.CUDAGraph()
+            g.capture_begin(capture_error_mode="relaxed")
+            try:
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "matches neither the producer's nor the consumer's",
+                ):
+                    fwd().backward()
+            finally:
+                g.capture_end()
+        # The aborted mid-capture backward leaves a partially captured graph
+        # and grads-in-flight on both devices; tear everything down so later
+        # capture tests start clean. (Rebind instead of `del`: ruff reads a
+        # `del` of names captured by fwd's closure as F821 at the use sites.)
+        del g
+        x = y1 = fwd = None
+        gc.collect()
+        for dev in range(2):
+            torch.cuda.synchronize(dev)
+
+    @unittest.skipIf(
+        not TEST_CUDA_GRAPH, "CUDA >= 11.0 or ROCM >= 5.3 required for graphs"
+    )
     def test_graphsafe_set_get_rng_state(self):
         # Define a function to create generator states, with optional graph registration
         def create_states(generator):
