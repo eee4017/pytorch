@@ -24,6 +24,7 @@ from torch._inductor.codegen.triton import (
 )
 from torch._inductor.dtype_propagation import DtypePropagationOpsHandler, promote_types
 from torch._inductor.graph import GraphLowering
+from torch._inductor.lowering import unsupported_input_tensor
 from torch._inductor.runtime.hints import DeviceProperties
 from torch._inductor.test_case import TestCase as InductorTestCase
 from torch._inductor.utils import (
@@ -32,6 +33,7 @@ from torch._inductor.utils import (
     run_and_get_kernels,
 )
 from torch._inductor.virtualized import V
+from torch._subclasses.fake_tensor import FakeTensorMode
 from torch.testing._internal.inductor_utils import (
     GPU_TYPE,
     HAS_CPU,
@@ -579,6 +581,23 @@ class TestCodegenTriton(InductorTestCase):
                 torch.float8_e5m2fnuz, triton_backend="hip", triton_arch="gfx942"
             )
         )
+
+    def test_unsupported_fp8_device_put_uses_registered_lowering(self):
+        with FakeTensorMode():
+            x = torch.empty((2, 8), device=GPU_TYPE, dtype=torch.float8_e4m3fn)
+            transposed = x.t()
+            expanded = x[:1].expand(2, 8)
+
+        device_put = SimpleNamespace(target=torch.ops.prims.device_put.default)
+        pointwise = SimpleNamespace(target=torch.ops.aten.add.Tensor)
+        with patch(
+            "torch._inductor.lowering.is_triton_fp8_dtype_supported",
+            return_value=False,
+        ):
+            self.assertFalse(unsupported_input_tensor(x, device_put))
+            self.assertTrue(unsupported_input_tensor(transposed, device_put))
+            self.assertTrue(unsupported_input_tensor(expanded, device_put))
+            self.assertTrue(unsupported_input_tensor(x, pointwise))
 
     def test_signature_of_float8_e4m3fn_uses_uint8_on_pre_sm89_cuda_inputs(self):
         class FakeGraph:

@@ -4315,10 +4315,6 @@ if HAS_CUDA_AND_TRITON:
             # 2 graph partitions lead to 2 cudagraph
             self.assertEqual(self.get_manager().new_graph_id().id, 2)
 
-        @unittest.skip(
-            "Disabled due to CI failures; see "
-            "https://github.com/pytorch/pytorch/issues/190233"
-        )
         def test_graph_partition_view_fallback(self):
             def f(x):
                 y = x + 1
@@ -4329,11 +4325,19 @@ if HAS_CUDA_AND_TRITON:
 
             compiled_f = torch.compile(f, mode="reduce-overhead")
 
-            for _ in range(3):
+            code = []
+            for i in range(3):
                 x = torch.ones(2, dtype=torch.int32, device="cuda")
                 eager_out = f(x)
-                compiled_out = compiled_f(x)
+                if i == 0:
+                    compiled_out, code = run_and_get_code(compiled_f, x)
+                else:
+                    compiled_out = compiled_f(x)
                 self.assertEqual(eager_out, compiled_out)
+
+            FileCheck().check_count(".copy_", 2, exactly=True).check_not(
+                "torch.ops.prims.device_put.default"
+            ).run(code[0])
 
         @torch._inductor.config.patch("graph_partition", True)
         @skipIfRocm

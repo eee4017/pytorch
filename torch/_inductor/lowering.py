@@ -2751,7 +2751,14 @@ def unsupported_input_tensor(t: torch.Tensor, node=None):
     if t.is_sparse:
         return True
 
-    if not is_triton_fp8_dtype_supported(t.dtype, t.device):
+    # DeviceCopy does not generate Triton code for contiguous inputs, so
+    # unsupported Triton FP8 dtypes can still use the registered device_put
+    # lowering. Non-contiguous inputs may need a Triton layout-copy kernel.
+    if not is_triton_fp8_dtype_supported(t.dtype, t.device) and (
+        node is None
+        or node.target is not prims.device_put.default
+        or not t.is_contiguous()
+    ):
         return True
 
     if t.dtype == torch.float8_e8m0fnu:
